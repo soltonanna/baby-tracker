@@ -1,0 +1,116 @@
+# Baby Tracker
+
+A twin-first daily journal and family health record for babies.
+
+Product source of truth: [`BABY_TRACKER_SPEC.md`](./BABY_TRACKER_SPEC.md).
+Architecture, data model, API and roadmap: [`ARCHITECTURE_PROPOSAL.md`](./ARCHITECTURE_PROPOSAL.md).
+
+> **Not a medical application.** Baby Tracker stores and displays what a parent
+> or doctor entered. It does not diagnose, does not recommend or calculate
+> medication doses, and does not judge whether a baby is healthy.
+
+---
+
+## Requirements
+
+- **Node.js 22.22.0 or newer** (`.nvmrc` pins 22.23.2 — `nvm use`)
+- **MongoDB 8.0** — either `docker compose up -d`, a local install, or MongoDB Atlas
+
+## Getting started
+
+```bash
+nvm use                       # or make sure node -v is >= 22.22.0
+npm install                   # installs every workspace
+
+cp apps/api/.env.example apps/api/.env
+docker compose up -d          # optional: local MongoDB on :27017
+
+npm run dev                   # builds shared, then runs API + web in watch mode
+```
+
+- Web app: <http://localhost:5173>
+- API: <http://localhost:4000/api/v1/health>
+
+The Vite dev server proxies `/api` to the API, so the browser talks to a single
+origin — the same shape the httpOnly refresh cookie will need in production.
+
+The API starts even when MongoDB is unreachable; `/api/v1/health` reports the
+real connection state, so the foundation can be inspected before a database
+exists.
+
+## Scripts
+
+| Command             | What it does                                 |
+| ------------------- | -------------------------------------------- |
+| `npm run dev`       | Shared package in watch mode + API + web     |
+| `npm run build`     | Production build of all three workspaces     |
+| `npm run typecheck` | `tsc` across every workspace, tests included |
+| `npm run lint`      | ESLint across the monorepo                   |
+| `npm run format`    | Prettier write (`format:check` to verify)    |
+| `npm test`          | Vitest, all projects                         |
+| `npm run verify`    | format:check → lint → typecheck → test       |
+
+## Structure
+
+```text
+packages/shared   Domain types, Zod schemas, unit conversion, time helpers
+apps/api          Express 5 + Mongoose REST API
+apps/web          React 19 + Vite mobile-first client
+```
+
+Both apps import `@baby-tracker/shared`, so a request body the client builds and
+the schema the server validates come from one definition.
+
+## Pinned versions
+
+Chosen on 2026-09-01 as the newest **mutually compatible** stable set.
+
+| Package           | Version | Note                                                                                                                                                              |
+| ----------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node              | 22.23.2 | React Router 8 requires ≥ 22.22.0                                                                                                                                 |
+| TypeScript        | ~6.0.3  | **Not 7.0.2.** `typescript-eslint@8` declares `typescript >=4.8.4 <6.1.0`, so TS 7 breaks linting. Pinned with `~` so it cannot drift into 6.1.                   |
+| Express           | 5.2.1   | Forwards async rejections to the error handler natively — no `asyncHandler` wrapper needed                                                                        |
+| Mongoose          | 9.9.4   |                                                                                                                                                                   |
+| Zod               | 4.5.4   | Shared by API and web                                                                                                                                             |
+| React / React DOM | 19.2.8  |                                                                                                                                                                   |
+| React Router      | 8.3.1   |                                                                                                                                                                   |
+| TanStack Query    | 5.102.8 | Server state; no Redux                                                                                                                                            |
+| Tailwind CSS      | 4.3.3   | CSS-first `@theme`, no `tailwind.config.js`                                                                                                                       |
+| Vite              | 8.2.2   |                                                                                                                                                                   |
+| Vitest            | 4.1.11  |                                                                                                                                                                   |
+| ESLint            | 10.9.1  | Flat config, type-aware rules intentionally off                                                                                                                   |
+| Prettier          | 3.9.6   |                                                                                                                                                                   |
+| pino              | 10.3.1  |                                                                                                                                                                   |
+| MongoDB server    | 8.0     | Not 6.0: its security support ended 2025-07-31. Mongoose 9 supports 6.x/7.x/8.x, so this is a lifecycle choice, not a driver one. 8.0 is supported to 2029-10-31. |
+
+Dependencies deliberately **not** taken:
+
+- **axios** — native `fetch` is enough, and the refresh-retry logic is ours anyway.
+- **date-fns-tz / luxon** — the time-zone maths the product needs is ~40 tested
+  lines over `Intl.DateTimeFormat` (`packages/shared/src/time.ts`).
+- **A UI kit** — Tailwind plus a small set of our own primitives, so the
+  one-handed twin interaction model is not fighting someone else's components.
+
+## Time zones and daylight saving
+
+`packages/shared/src/time.ts` owns every calendar decision, and it is the one
+place worth reading before trusting a daily total.
+
+`localDayStart` finds the first instant belonging to a local date by binary
+search rather than subtracting the UTC offset from midnight, because **local
+midnight does not always exist**. In `America/Santiago` the spring daylight-saving
+jump happens at midnight, so 2026-09-06 begins at 01:00 local time; subtracting
+the offset lands an hour into the previous day. `Asia/Beirut` has the same shape
+of transition. The tests cover Yerevan (no DST), Berlin (ordinary DST), Beirut
+and Santiago (midnight transitions), in both directions, plus a sweep asserting
+that consecutive days never overlap and never leave a gap.
+
+## Conventions
+
+- All instants are stored **UTC**; every event also carries `localDate`
+  (`YYYY-MM-DD` in the family's time zone) so "today" is an indexed lookup.
+- All measurements are stored in **canonical base units**: grams, millimetres,
+  millilitres, °C, seconds. Conversion happens only at the UI boundary.
+- Errors are always `{ "error": { "code", "message", "details"? } }`.
+- No endpoint trusts a `familyId` from the client; access is resolved from the
+  authenticated user's family membership.

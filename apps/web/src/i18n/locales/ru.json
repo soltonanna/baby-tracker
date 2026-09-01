@@ -1,0 +1,27 @@
+{
+  "app": {
+    "name": "Baby Tracker",
+    "tagline": "Спокойный дневник дня для близнецов"
+  },
+  "nav": {
+    "today": "Сегодня",
+    "timeline": "Лента",
+    "health": "Здоровье",
+    "more": "Ещё"
+  },
+  "system": {
+    "apiStatusTitle": "Состояние системы",
+    "apiOnline": "API доступен",
+    "apiOffline": "API недоступен",
+    "database": "База данных",
+    "checking": "Проверяем…",
+    "foundationReady": "Основа готова. Работа над функциями начинается с Phase 1."
+  },
+  "placeholder": {
+    "comingIn": "Появится в {{phase}}"
+  },
+  "errors": {
+    "notFoundTitle": "Страница не найдена",
+    "notFoundBody": "Такого экрана пока нет."
+  }
+}

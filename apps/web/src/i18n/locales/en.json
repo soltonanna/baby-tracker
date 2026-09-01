@@ -1,0 +1,27 @@
+{
+  "app": {
+    "name": "Baby Tracker",
+    "tagline": "A calm daily journal for twins"
+  },
+  "nav": {
+    "today": "Today",
+    "timeline": "Timeline",
+    "health": "Health",
+    "more": "More"
+  },
+  "system": {
+    "apiStatusTitle": "System status",
+    "apiOnline": "API is reachable",
+    "apiOffline": "API is not reachable",
+    "database": "Database",
+    "checking": "Checking…",
+    "foundationReady": "Foundation is in place. Feature work starts in Phase 1."
+  },
+  "placeholder": {
+    "comingIn": "Arrives in {{phase}}"
+  },
+  "errors": {
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "That screen does not exist yet."
+  }
+}

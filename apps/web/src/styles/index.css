@@ -1,0 +1,73 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ *
+ * Warm, calm and quiet: a paper-like ground, soft ink, one warm accent and one
+ * muted teal. Nothing childish, no pastel decoration. The dark palette is the
+ * one that matters most — it is what a parent sees at 3am — so it is dimmed
+ * rather than pure black, with reduced contrast on large surfaces.
+ */
+@theme {
+  --color-canvas: #faf7f3;
+  --color-surface: #ffffff;
+  --color-surface-sunken: #f2ece5;
+  --color-line: #e6ddd3;
+  --color-ink: #2c2622;
+  --color-muted: #7c7168;
+  --color-accent: #b8663a;
+  --color-accent-soft: #f6e6da;
+  --color-calm: #3f6f68;
+  --color-calm-soft: #e2eeeb;
+  --color-positive: #4a7c59;
+  --color-critical: #a5453b;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --radius-card: 1rem;
+
+  /* Minimum comfortable one-handed touch target. */
+  --spacing-touch: 3rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #17130f;
+    --color-surface: #211c17;
+    --color-surface-sunken: #12100d;
+    --color-line: #322a23;
+    --color-ink: #ede5dc;
+    --color-muted: #a3968a;
+    --color-accent: #d98a5c;
+    --color-accent-soft: #3a291f;
+    --color-calm: #6fa79d;
+    --color-calm-soft: #22322f;
+    --color-positive: #7aa886;
+    --color-critical: #d1776c;
+  }
+}
+
+html {
+  background-color: var(--color-canvas);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
+  /* Avoid rubber-band scrolling behind the fixed bottom navigation. */
+  overscroll-behavior-y: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

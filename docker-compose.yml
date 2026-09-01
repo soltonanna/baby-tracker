@@ -1,0 +1,22 @@
+# Local MongoDB for development.
+#
+# Pinned to 8.0 rather than a floating `mongo:8` tag, and not 6.0: MongoDB 6.0
+# reached end of security support on 2025-07-31, so it no longer receives
+# patches. Mongoose 9 supports servers 6.x, 7.x and 8.x, so this is a lifecycle
+# and security choice, not a driver constraint. 8.0 is supported until
+# 2029-10-31 and is what MongoDB Atlas offers as its default.
+#
+# Usage: docker compose up -d
+# Then set MONGODB_URI=mongodb://localhost:27017/baby_tracker in apps/api/.env
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: baby-tracker-mongo
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:

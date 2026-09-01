@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+package-lock.json
+
+# Product documents — maintained by hand, never reformatted by tooling.
+BABY_TRACKER_SPEC.md
+ARCHITECTURE_PROPOSAL.md

@@ -1,0 +1,45 @@
+{
+  "name": "baby-tracker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Baby Tracker \u2014 twin-first daily journal and family health record for babies.",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run build --workspace @baby-tracker/shared && run-p dev:shared dev:api dev:web",
+    "dev:shared": "npm run dev --workspace @baby-tracker/shared",
+    "dev:api": "npm run dev --workspace @baby-tracker/api",
+    "dev:web": "npm run dev --workspace @baby-tracker/web",
+    "build": "npm run build --workspace @baby-tracker/shared && run-s build:api build:web",
+    "build:api": "npm run build --workspace @baby-tracker/api",
+    "build:web": "npm run build --workspace @baby-tracker/web",
+    "typecheck": "npm run build --workspace @baby-tracker/shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run build --workspace @baby-tracker/shared && vitest run",
+    "test:watch": "npm run build --workspace @baby-tracker/shared && vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "run-s format:check lint typecheck test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.4.0",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.5",
+    "globals": "^17.11.0",
+    "npm-run-all2": "^9.0.3",
+    "prettier": "^3.9.6",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^4.1.11"
+  }
+}
