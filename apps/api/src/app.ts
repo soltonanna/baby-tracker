@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { env } from './config/env.js';
 import { apiRouter } from './routes.js';
@@ -17,6 +18,10 @@ export function createApp(): Express {
   // in an httpOnly cookie, so the browser must be allowed to send it.
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
+  // Unsigned on purpose: the refresh token is already 256 bits of randomness
+  // checked against a server-side hash, so a signature adds a second secret
+  // and no security (decision D19).
+  app.use(cookieParser());
 
   app.use(API_PREFIX, apiRouter);
 
