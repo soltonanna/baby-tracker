@@ -2,11 +2,13 @@ import type { RequestHandler } from 'express';
 import type {
   AuthResponse,
   LoginInput,
+  MeResponse,
   RefreshResponse,
   RegisterInput,
 } from '@baby-tracker/shared';
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../../lib/cookies.js';
 import { unauthorized } from '../../lib/httpError.js';
+import { getAuth } from '../../middleware/authenticate.js';
 import * as authService from './service.js';
 
 /**
@@ -51,16 +53,21 @@ export const refresh: RequestHandler = async (req, res) => {
   }
 
   setRefreshCookie(res, issued.refreshToken);
-  res
-    .status(200)
-    .json({
-      accessToken: issued.accessToken,
-      expiresIn: issued.expiresIn,
-    } satisfies RefreshResponse);
+  res.status(200).json({
+    accessToken: issued.accessToken,
+    expiresIn: issued.expiresIn,
+  } satisfies RefreshResponse);
 };
 
 export const logout: RequestHandler = async (req, res) => {
   await authService.logoutSession(readRefreshCookie(req.cookies));
   clearRefreshCookie(res);
   res.status(204).send();
+};
+
+export const me: RequestHandler = async (req, res) => {
+  const { userId } = getAuth(req);
+  const user = await authService.getPublicUser(userId);
+
+  res.status(200).json({ user } satisfies MeResponse);
 };

@@ -4,16 +4,46 @@ Running record of where the project stands. Updated at the end of each phase.
 Product source of truth: `BABY_TRACKER_SPEC.md`.
 Architecture and roadmap: `ARCHITECTURE_PROPOSAL.md`.
 
+### Design documents
+
+| Phase | Document                   | Commit    |
+| ----- | -------------------------- | --------- |
+| 0     | `ARCHITECTURE_PROPOSAL.md` | `1babcfc` |
+| 1A    | `docs/phase-1a-auth.md`    | `1992d5c` |
+
 ---
 
 ## Current phase
 
-**Phase 0 — Foundation. Complete, awaiting approval.**
-Phase 1 (auth, family, babies, navigation) has not been started.
+**Phase 1A — Authentication. Complete, awaiting approval.**
+Phase 1B (families) has not been started.
 
 ---
 
 ## Completed work
+
+### Phase 1A — Authentication (2026-09-01)
+
+Plan: `docs/phase-1a-auth.md`. Three commits: primitives, endpoints, middleware.
+
+- `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`,
+  `POST /auth/logout`, `GET /auth/me`.
+- Access token: JWT HS256, 15 minutes, verified with an explicit algorithm
+  allowlist and a `tokenType` claim. Refresh token: opaque 256 bits, 30 days,
+  httpOnly cookie scoped to `/api/v1/auth`, stored only as a SHA-256 hash.
+- Rotation on every refresh, claimed atomically so two concurrent refreshes
+  cannot both succeed. Reuse of a rotated token revokes the whole `sessionId`
+  lineage.
+- Passwords: scrypt from `node:crypto`, N=2^16 r=8 p=2, parameters encoded in
+  the hash so the cost can be raised later. Unknown emails get a dummy
+  verification, so login timing does not reveal which addresses exist.
+- Rate limits: 10 logins / 15 min, 5 registrations / hour, 60 refreshes / 15 min.
+- 55 unit tests and 30 integration tests.
+
+**Naming note.** The field tying one login's refresh tokens together is
+`sessionId`, not `familyId` — `familyId` already means a Baby Tracker family
+everywhere else, and the collision would have been actively confusing from
+Phase 1B onwards.
 
 ### Phase 0 — Foundation (2026-09-01)
 
@@ -63,6 +93,21 @@ midnights alike. Covered by a regression test.
 | D14 | Armenian vaccination schedule seeded first; schedules are data, never hardcoded rules    |
 | D15 | Vitest + Supertest + mongodb-memory-server; authorization tests mandatory                |
 | D16 | Deployment target deferred until the app is close to a deployable MVP                    |
+| D17 | Password hashing: scrypt from `node:crypto`, N=2^16 r=8 p=2 — no dependency              |
+| D18 | `jose` for JWT access tokens                                                             |
+| D19 | `cookie-parser` for the refresh cookie, unsigned                                         |
+| D20 | `express-rate-limit` on the auth routes                                                  |
+
+Phase 1A rulings: access token 15 minutes, refresh token 30 days, **no absolute
+session cap yet** — rotation with reuse detection is judged sufficient for the
+MVP. `userAgent` is stored on refresh tokens to support a future active-sessions
+screen; **no IP addresses**, to minimise personal data.
+
+**Intentional, temporary security trade-off.** `POST /auth/register` returns
+`409 EMAIL_TAKEN`, which confirms that an address has an account. Login does not
+leak this. Registration is rate limited to five attempts per hour. Revisit when
+email verification and password recovery are implemented — the alternative
+(always succeed, send an email) needs an email provider we have not chosen.
 
 Spec ambiguities resolved: event ownership → D2; MVP = Phases 0–4; caregiver
 roles and authorization from Phase 1, invitation UI in Phase 6; sleep crossing
@@ -83,14 +128,29 @@ abstraction built for hypothetical scale.
 | D16 | Deployment target — affects cookie domain/`SameSite` for D6               | End of Phase 2 |
 | —   | Whether to enable `exactOptionalPropertyTypes` once Mongoose models exist | Phase 1        |
 | —   | Whether to enable type-aware ESLint rules (currently off for speed)       | Any time       |
+| —   | Email provider, which unblocks password reset and email verification      | Phase 1D       |
 
 ---
 
 ## Known issues and technical debt
 
-- `mongodb-memory-server` is not installed yet. It pulls a large MongoDB binary
-  and nothing needed a database in Phase 0; it lands with the first model tests
-  in Phase 1.
+- **The Phase 1A integration tests have not been executed yet.** They were
+  written but not run: the sandbox this code was authored in blocks MongoDB's
+  download CDN, so `mongodb-memory-server` cannot fetch a mongod binary. Unit
+  tests, typecheck, lint, build and a partial live smoke test of the HTTP layer
+  all pass. Run `npm run test:integration` once on a machine with normal network
+  access to close this out. If the download is blocked there too, use
+  `MONGODB_TEST_URI=mongodb://127.0.0.1:27017 npm run test:integration` after
+  `docker compose up -d`.
+- The mongod version used by `mongodb-memory-server` is not pinned, because it
+  could not be verified here. Pin it once a version is known to download
+  successfully, for reproducibility.
+- When MongoDB is unreachable, Mongoose buffers for ten seconds and the request
+  then fails as a 500. A fast 503 would be clearer. Consider `bufferCommands:
+false` plus a database-readiness guard in Phase 1B.
+- Concurrent refreshes are treated as token reuse and log the user out. This is
+  the strict reading of a rotation scheme and is intended, but it means the web
+  client must serialise refreshes through a single in-flight request.
 - `exactOptionalPropertyTypes` is off. It tends to fight Mongoose document
   types; worth reassessing once real models exist.
 - Type-aware ESLint rules are off deliberately — `tsc --noEmit` already catches
@@ -105,12 +165,15 @@ abstraction built for hypothetical scale.
 
 ## Next step
 
-Await approval, then **Phase 1 — auth, family, babies, navigation**:
+Await approval, then **Phase 1B — families**:
 
-- API: `User`, `Family`, `FamilyMember`, `Baby`, `RefreshToken` models;
-  `authenticate` and `authorize` middleware (membership resolution, roles,
-  baby-in-family checks); `auth`, `users`, `families`, `babies` features;
-  authorization tests proving one family cannot reach another's data.
-- Web: login/register/forgot-password, a create-family wizard that also creates
-  Baby A and Baby B, baby profile view and edit, protected routes, and the real
-  app shell.
+- API: `Family` and `FamilyMember` models; the authorization chain from
+  `ARCHITECTURE_PROPOSAL.md` §4.3 — membership resolution, role checks, and a
+  `scope` argument that a service function cannot be called without; `families`
+  feature; `GET /auth/me` extended with the caller's families. Authorization
+  tests proving one family cannot reach another's data.
+- Web: the login and registration screens, protected routes, and the access-token
+  refresh retry — deferred from 1A so they land with the onboarding wizard.
+
+Not in 1B: babies (1C), invitations and caregiver management (Phase 6), password
+reset and email verification (1D, blocked on an email provider).
