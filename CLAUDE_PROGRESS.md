@@ -140,14 +140,19 @@ abstraction built for hypothetical scale.
   tests, typecheck, lint, build and a partial live smoke test of the HTTP layer
   all pass. Run `npm run test:integration` to close this out.
 
-  A first run against a shared server exposed a real defect in the harness,
-  since fixed: every test file connected to the same `baby_tracker_test`
-  database, so parallel files deleted each other's rows in `afterEach` and
-  collided on the same fixture email. Each file now gets its own generated
-  database, dropped when the file ends. The same fix pass also stopped a
-  developer's `apps/api/.env` from leaking into test runs through dotenv, which
-  could have changed the values the cookie and token-lifetime assertions
-  depend on.
+  Two rounds of harness defects were found and fixed by running it for real:
+
+  1. Every test file connected to the same `baby_tracker_test` database, so
+     parallel files deleted each other's rows in `afterEach` and collided on the
+     same fixture email. Each file now generates its own database name and
+     drops it when the file ends. The same pass stopped a developer's
+     `apps/api/.env` leaking into test runs through dotenv.
+  2. Each test file also _created its own MongoDB server_. Two workers calling
+     `MongoMemoryServer.create()` at once raced over the shared binary lock file
+     and the run died with `UnableToUnlockLockfileError`. The server is now
+     chosen once per run in `globalSetup`, which also lets the suite find the
+     Docker MongoDB automatically, so `npm run verify` needs no environment
+     variable and downloads nothing.
 
 - The mongod version used by `mongodb-memory-server` is not pinned, because it
   could not be verified here. Pin it once a version is known to download

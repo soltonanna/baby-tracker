@@ -36,6 +36,8 @@ export default defineConfig({
           root: './apps/api',
           environment: 'node',
           include: ['src/**/*.int.test.ts'],
+          // Chooses one MongoDB for the whole run, before any worker starts.
+          globalSetup: ['./src/test/globalSetup.ts'],
           setupFiles: ['./src/test/env.ts', './src/test/mongo.ts'],
           // Starting a MongoDB instance is slower than a unit test.
           testTimeout: 30_000,

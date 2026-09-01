@@ -114,19 +114,26 @@ npm run test:integration # database-backed tests only
 ```
 
 Database-backed tests are named `*.int.test.ts` and run in their own Vitest
-project. Vitest runs test files in parallel, so **each file gets its own
-database**, named with a random suffix and dropped when the file finishes — the
-suite is therefore safe to run against a shared or non-empty MongoDB server, and
-never touches a database it did not create.
+project. **No setup beyond `docker compose up -d` is needed** — the suite finds
+MongoDB by itself, in this order:
 
-By default an in-memory MongoDB is started, which downloads a mongod binary on
-first use. If that download is blocked on your network, point the tests at a
-running MongoDB instead:
+1. `MONGODB_TEST_URI`, if you set it. An explicit choice is never second-guessed:
+   if nothing is listening there the run fails loudly rather than quietly
+   downloading a MongoDB you did not ask for.
+2. The project's local MongoDB on `127.0.0.1:27017` — the port
+   `docker-compose.yml` publishes.
+3. An in-memory MongoDB, for machines with no Docker and no local server. This
+   downloads a mongod binary the first time.
 
-```bash
-docker compose up -d
-MONGODB_TEST_URI=mongodb://127.0.0.1:27017 npm run test:integration
-```
+The server is chosen **once per run**, in `apps/api/src/test/globalSetup.ts`,
+before any worker starts. That is not just tidiness: `mongodb-memory-server`
+caches its binary under a shared lock file, so two workers starting one
+simultaneously race each other over `<version>.lock` and the run fails.
+
+Vitest runs test files in parallel, so **each file gets its own database** on
+whichever server was chosen, named with a random suffix and dropped when the
+file finishes. The suite is therefore safe against a shared or non-empty MongoDB
+and never touches a database it did not create.
 
 Password hashing is deliberately expensive (scrypt, 64 MiB), so tests that hash
 a password take a few hundred milliseconds each. That cost is the feature.

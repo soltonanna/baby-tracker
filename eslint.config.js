@@ -42,6 +42,12 @@ export default tseslint.config(
     },
   },
 
+  // The test harness reports which MongoDB it chose; that is its job.
+  {
+    files: ['apps/api/src/test/**/*.ts'],
+    rules: { 'no-console': 'off' },
+  },
+
   // Shared rules
   {
     rules: {
