@@ -11,6 +11,19 @@ const EnvSchema = z.object({
   MONGODB_URI: z.string().min(1).default('mongodb://127.0.0.1:27017/baby_tracker'),
   CORS_ORIGIN: z.string().min(1).default('http://localhost:5173'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+
+  /** Signs access tokens (decision D6). Required in every environment. */
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+
+  /**
+   * Refresh-cookie attributes. `z.stringbool` rather than `z.coerce.boolean`,
+   * because `Boolean('false')` is `true` — a genuinely dangerous default here.
+   * Left undefined, COOKIE_SECURE follows NODE_ENV (see `cookieSecure` below).
+   */
+  COOKIE_SECURE: z.stringbool().optional(),
+  COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -29,3 +42,13 @@ function loadEnv(): Env {
 export const env = loadEnv();
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
+
+/** Secure cookies are mandatory in production, and the default outside it is off. */
+export const cookieSecure: boolean = env.COOKIE_SECURE ?? isProduction;
+
+if (isProduction && !cookieSecure) {
+  throw new Error('COOKIE_SECURE must not be disabled in production');
+}
+if (env.COOKIE_SAMESITE === 'none' && !cookieSecure) {
+  throw new Error('COOKIE_SAMESITE=none requires COOKIE_SECURE=true');
+}

@@ -105,6 +105,27 @@ of transition. The tests cover Yerevan (no DST), Berlin (ordinary DST), Beirut
 and Santiago (midnight transitions), in both directions, plus a sweep asserting
 that consecutive days never overlap and never leave a gap.
 
+## Tests
+
+```bash
+npm test                 # everything
+npm run test:unit        # no database needed — fast
+npm run test:integration # database-backed tests only
+```
+
+Database-backed tests are named `*.int.test.ts` and run in their own Vitest
+project. By default they start an in-memory MongoDB, which downloads a mongod
+binary on first use. If that download is blocked on your network, point them at
+a running MongoDB instead:
+
+```bash
+docker compose up -d
+MONGODB_TEST_URI=mongodb://127.0.0.1:27017 npm run test:integration
+```
+
+Password hashing is deliberately expensive (scrypt, 64 MiB), so tests that hash
+a password take a few hundred milliseconds each. That cost is the feature.
+
 ## Conventions
 
 - All instants are stored **UTC**; every event also carries `localDate`
