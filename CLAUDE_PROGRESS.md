@@ -134,14 +134,21 @@ abstraction built for hypothetical scale.
 
 ## Known issues and technical debt
 
-- **The Phase 1A integration tests have not been executed yet.** They were
-  written but not run: the sandbox this code was authored in blocks MongoDB's
-  download CDN, so `mongodb-memory-server` cannot fetch a mongod binary. Unit
+- **The Phase 1A integration tests have not been executed in full yet.** The
+  sandbox this code was authored in blocks MongoDB's download CDN and cannot
+  reach a host-side MongoDB, so they were written but never run here. Unit
   tests, typecheck, lint, build and a partial live smoke test of the HTTP layer
-  all pass. Run `npm run test:integration` once on a machine with normal network
-  access to close this out. If the download is blocked there too, use
-  `MONGODB_TEST_URI=mongodb://127.0.0.1:27017 npm run test:integration` after
-  `docker compose up -d`.
+  all pass. Run `npm run test:integration` to close this out.
+
+  A first run against a shared server exposed a real defect in the harness,
+  since fixed: every test file connected to the same `baby_tracker_test`
+  database, so parallel files deleted each other's rows in `afterEach` and
+  collided on the same fixture email. Each file now gets its own generated
+  database, dropped when the file ends. The same fix pass also stopped a
+  developer's `apps/api/.env` from leaking into test runs through dotenv, which
+  could have changed the values the cookie and token-lifetime assertions
+  depend on.
+
 - The mongod version used by `mongodb-memory-server` is not pinned, because it
   could not be verified here. Pin it once a version is known to download
   successfully, for reproducibility.

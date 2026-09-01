@@ -1,24 +1,36 @@
 /**
  * MongoDB lifecycle for integration tests (`*.int.test.ts`).
  *
- * By default an in-memory MongoDB is started per test file, which keeps files
- * independent and lets Vitest run them in parallel. `mongodb-memory-server`
- * downloads a mongod binary on first use.
+ * Vitest runs test files in parallel workers, so **every test file gets its own
+ * database**, named with a random suffix. That matters more than it looks:
  *
- * Set `MONGODB_TEST_URI` to run against an already-running MongoDB instead —
- * useful in CI with a service container, behind a restricted network, or when
- * you already have `docker compose up -d` running locally:
+ *   - `afterEach` below wipes every collection. Two files sharing one database
+ *     would delete each other's rows mid-test.
+ *   - Fixtures collide. Two files that both register `anahit@example.com` would
+ *     give the second one a 409.
  *
- *   MONGODB_TEST_URI=mongodb://127.0.0.1:27017 npm test
+ * With an in-memory server this used to be hidden, because each file started
+ * its own server. Against a shared MongoDB it is not hidden at all, so the
+ * isolation is now explicit rather than incidental.
  *
+ * Set `MONGODB_TEST_URI` to run against an already-running MongoDB — useful in
+ * CI with a service container, behind a restricted network, or when you already
+ * have `docker compose up -d` running:
+ *
+ *   MONGODB_TEST_URI=mongodb://127.0.0.1:27017 npm run test:integration
+ *
+ * The database name is generated, never taken from the URI, so the suite can
+ * never touch real data on a shared server; it is dropped when the file ends.
  * The mongod version is intentionally not pinned: `mongodb-memory-server`
  * chooses one it knows is published for the current platform.
  */
+import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import mongoose from 'mongoose';
 import type { MongoMemoryServer } from 'mongodb-memory-server';
 
-const DATABASE_NAME = 'baby_tracker_test';
+/** Unique per test file: this module is evaluated once per file. */
+const databaseName = `baby_tracker_test_${randomUUID().replaceAll('-', '')}`;
 
 let memoryServer: MongoMemoryServer | undefined;
 
@@ -37,16 +49,20 @@ async function startInMemoryMongo(): Promise<string> {
       { cause: error },
     );
   }
-  return memoryServer.getUri(DATABASE_NAME);
+  return memoryServer.getUri();
 }
 
 beforeAll(async () => {
-  const externalUri = process.env.MONGODB_TEST_URI;
-  const uri = externalUri
-    ? `${externalUri.replace(/\/+$/, '')}/${DATABASE_NAME}`
-    : await startInMemoryMongo();
+  const uri = process.env.MONGODB_TEST_URI ?? (await startInMemoryMongo());
 
-  await mongoose.connect(uri);
+  // `dbName` overrides whatever database the URI names, so a URI carrying a
+  // path or query parameters needs no string surgery and cannot be misread.
+  await mongoose.connect(uri, { dbName: databaseName });
+
+  // Build every index before the first test. Without this, a test that relies
+  // on the unique index (registering a duplicate email) can race index
+  // creation and fail intermittently on a cold database.
+  await Promise.all(Object.values(mongoose.connection.models).map((model) => model.init()));
 });
 
 afterEach(async () => {
@@ -55,6 +71,10 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  // Leave no databases behind on a shared server.
+  if (mongoose.connection.readyState === 1) {
+    await mongoose.connection.dropDatabase();
+  }
   await mongoose.disconnect();
   await memoryServer?.stop();
 });

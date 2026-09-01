@@ -114,9 +114,14 @@ npm run test:integration # database-backed tests only
 ```
 
 Database-backed tests are named `*.int.test.ts` and run in their own Vitest
-project. By default they start an in-memory MongoDB, which downloads a mongod
-binary on first use. If that download is blocked on your network, point them at
-a running MongoDB instead:
+project. Vitest runs test files in parallel, so **each file gets its own
+database**, named with a random suffix and dropped when the file finishes — the
+suite is therefore safe to run against a shared or non-empty MongoDB server, and
+never touches a database it did not create.
+
+By default an in-memory MongoDB is started, which downloads a mongod binary on
+first use. If that download is blocked on your network, point the tests at a
+running MongoDB instead:
 
 ```bash
 docker compose up -d
