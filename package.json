@@ -22,7 +22,7 @@
     "typecheck": "npm run build --workspace @baby-tracker/shared && npm run typecheck --workspaces --if-present",
     "test": "npm run build --workspace @baby-tracker/shared && vitest run",
     "test:watch": "npm run build --workspace @baby-tracker/shared && vitest",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

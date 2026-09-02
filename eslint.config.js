@@ -42,12 +42,6 @@ export default tseslint.config(
     },
   },
 
-  // The test harness reports which MongoDB it chose; that is its job.
-  {
-    files: ['apps/api/src/test/**/*.ts'],
-    rules: { 'no-console': 'off' },
-  },
-
   // Shared rules
   {
     rules: {
@@ -58,6 +52,14 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       eqeqeq: ['error', 'always'],
     },
+  },
+
+  // Must come after the shared rules: flat config is last-match-wins, and the
+  // shared block sets `no-console` for every file. The test harness prints which
+  // MongoDB it selected, which is diagnostic output, not a stray debug statement.
+  {
+    files: ['apps/api/src/test/**/*.ts'],
+    rules: { 'no-console': 'off' },
   },
 
   prettier,
