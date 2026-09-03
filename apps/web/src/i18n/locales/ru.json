@@ -23,5 +23,38 @@
   "errors": {
     "notFoundTitle": "Страница не найдена",
     "notFoundBody": "Такого экрана пока нет."
+  },
+  "auth": {
+    "restoring": "Восстанавливаем сессию…",
+    "signedInAs": "Вы вошли как {{name}}",
+    "logout": "Выйти",
+    "loggingOut": "Выходим…",
+    "field": {
+      "email": "Электронная почта",
+      "password": "Пароль",
+      "displayName": "Ваше имя"
+    },
+    "login": {
+      "title": "Вход",
+      "submit": "Войти",
+      "submitting": "Входим…",
+      "noAccount": "Ещё нет аккаунта?",
+      "goRegister": "Создать"
+    },
+    "register": {
+      "title": "Создание аккаунта",
+      "submit": "Создать аккаунт",
+      "submitting": "Создаём аккаунт…",
+      "passwordHint": "Минимум 10 символов.",
+      "haveAccount": "Уже есть аккаунт?",
+      "goLogin": "Войти"
+    },
+    "errors": {
+      "invalidCredentials": "Неверная почта или пароль.",
+      "emailTaken": "Аккаунт с такой почтой уже существует.",
+      "tooManyAttempts": "Слишком много попыток. Подождите немного и попробуйте снова.",
+      "validationFailed": "Проверьте поля ниже.",
+      "unexpected": "Что-то пошло не так. Попробуйте ещё раз."
+    }
   }
 }

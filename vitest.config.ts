@@ -6,6 +6,7 @@ import { defineConfig } from 'vitest/config';
  *   shared           pure functions, no I/O
  *   api-unit         everything that does not need a database (`*.test.ts`)
  *   api-integration  everything that does (`*.int.test.ts`)
+ *   web-unit         browser-side logic that needs no DOM (`*.test.ts`)
  *
  * `npm test` runs all three; `npm run test:unit` skips the database entirely.
  */
@@ -28,6 +29,17 @@ export default defineConfig({
           include: ['src/**/*.test.ts'],
           exclude: ['src/**/*.int.test.ts'],
           setupFiles: ['./src/test/env.ts'],
+        },
+      },
+      {
+        test: {
+          // No jsdom and no component-testing libraries: the auth flows worth
+          // testing are the token lifecycle, the refresh policy and the guard
+          // rules, and all three are deliberately plain functions.
+          name: 'web-unit',
+          root: './apps/web',
+          environment: 'node',
+          include: ['src/**/*.test.ts'],
         },
       },
       {

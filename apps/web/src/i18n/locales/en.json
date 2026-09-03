@@ -23,5 +23,38 @@
   "errors": {
     "notFoundTitle": "Page not found",
     "notFoundBody": "That screen does not exist yet."
+  },
+  "auth": {
+    "restoring": "Restoring your session…",
+    "signedInAs": "Signed in as {{name}}",
+    "logout": "Sign out",
+    "loggingOut": "Signing out…",
+    "field": {
+      "email": "Email",
+      "password": "Password",
+      "displayName": "Your name"
+    },
+    "login": {
+      "title": "Sign in",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "noAccount": "No account yet?",
+      "goRegister": "Create one"
+    },
+    "register": {
+      "title": "Create an account",
+      "submit": "Create account",
+      "submitting": "Creating account…",
+      "passwordHint": "At least 10 characters.",
+      "haveAccount": "Already have an account?",
+      "goLogin": "Sign in"
+    },
+    "errors": {
+      "invalidCredentials": "Email or password is incorrect.",
+      "emailTaken": "That email address already has an account.",
+      "tooManyAttempts": "Too many attempts. Please wait a little and try again.",
+      "validationFailed": "Please check the fields below.",
+      "unexpected": "Something went wrong. Please try again."
+    }
   }
 }
