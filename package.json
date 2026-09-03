@@ -12,6 +12,7 @@
     "apps/*"
   ],
   "scripts": {
+    "setup": "node scripts/setup-env.mjs",
     "dev": "npm run build --workspace @baby-tracker/shared && run-p dev:shared dev:api dev:web",
     "dev:shared": "npm run dev --workspace @baby-tracker/shared",
     "dev:api": "npm run dev --workspace @baby-tracker/api",

@@ -15,7 +15,7 @@
     "apiOffline": "API недоступен",
     "database": "База данных",
     "checking": "Проверяем…",
-    "foundationReady": "Основа готова. Работа над функциями начинается с Phase 1."
+    "noFeaturesYet": "Приложение запущено и подключено к API. Экраны отслеживания ещё не готовы."
   },
   "placeholder": {
     "comingIn": "Появится в {{phase}}"

@@ -31,19 +31,43 @@ function isApiErrorBody(value: unknown): value is ApiErrorBody {
   );
 }
 
+/**
+ * Builds the outgoing headers.
+ *
+ * Uses `Headers` rather than a plain object so that all three shapes
+ * `RequestInit.headers` accepts (a `Headers`, an entry array, a record) merge
+ * correctly, and so a caller can deliberately override a default. Defaults are
+ * only applied when the caller has not set that header — which is what makes
+ * an `Authorization` header additive rather than destructive.
+ */
+function buildHeaders(init: RequestInit): Headers {
+  const headers = new Headers(init.headers);
+
+  if (!headers.has('Accept')) {
+    headers.set('Accept', 'application/json');
+  }
+
+  // Only for a string body. A FormData or Blob body must keep the browser's
+  // own Content-Type, which carries the multipart boundary.
+  if (typeof init.body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  return headers;
+}
+
 export async function apiFetch<TResponse>(
   path: string,
   init: RequestInit = {},
 ): Promise<TResponse> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    // Required so the httpOnly refresh cookie is sent (decision D6).
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
-      ...init.headers,
-    },
     ...init,
+    // After the spread, deliberately: both are ours to decide. `credentials`
+    // must always be 'include' so the httpOnly refresh cookie is sent
+    // (decision D6), and the headers are merged from the caller's rather than
+    // replaced by them.
+    credentials: 'include',
+    headers: buildHeaders(init),
   });
 
   const isJson = response.headers.get('content-type')?.includes('application/json') ?? false;

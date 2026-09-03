@@ -34,7 +34,11 @@ function loadEnv(): Env {
     const problems = parsed.error.issues
       .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('\n');
-    throw new Error(`Invalid environment configuration:\n${problems}`);
+    throw new Error(
+      `Invalid environment configuration:\n${problems}\n\n` +
+        'If this is a fresh clone, run `npm run setup` from the repository root: it\n' +
+        'creates apps/api/.env from .env.example with a freshly generated JWT_SECRET.',
+    );
   }
   return parsed.data;
 }

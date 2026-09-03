@@ -9,7 +9,7 @@ export function TodayPage() {
     <div className="space-y-4">
       <ApiStatusCard />
       <Card>
-        <p className="text-muted">{t('system.foundationReady')}</p>
+        <p className="text-muted">{t('system.noFeaturesYet')}</p>
       </Card>
     </div>
   );

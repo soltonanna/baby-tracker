@@ -15,7 +15,7 @@
     "apiOffline": "API is not reachable",
     "database": "Database",
     "checking": "Checking…",
-    "foundationReady": "Foundation is in place. Feature work starts in Phase 1."
+    "noFeaturesYet": "The app is running and connected to its API. Tracking screens are not built yet."
   },
   "placeholder": {
     "comingIn": "Arrives in {{phase}}"

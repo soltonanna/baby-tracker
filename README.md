@@ -19,17 +19,22 @@ Architecture, data model, API and roadmap: [`ARCHITECTURE_PROPOSAL.md`](./ARCHIT
 ## Getting started
 
 ```bash
-nvm use                       # or make sure node -v is >= 22.22.0
-npm install                   # installs every workspace
-
-cp apps/api/.env.example apps/api/.env
-docker compose up -d          # optional: local MongoDB on :27017
-
-npm run dev                   # builds shared, then runs API + web in watch mode
+nvm use                # or make sure node -v is >= 22.22.0
+npm install
+npm run setup          # creates apps/api/.env with a generated JWT_SECRET
+docker compose up -d   # MongoDB on :27017
+npm run dev
 ```
 
 - Web app: <http://localhost:5173>
 - API: <http://localhost:4000/api/v1/health>
+
+`npm run setup` never overwrites an existing `apps/api/.env`, so it is safe to
+re-run. It generates the secret locally; nothing secret is committed, and
+`apps/api/.env.example` deliberately ships an **empty** `JWT_SECRET` so that
+copying it by hand fails at startup rather than running every clone on the same
+well-known value. The API requires a secret of at least 32 characters in every
+environment and refuses to start without one.
 
 The Vite dev server proxies `/api` to the API, so the browser talks to a single
 origin — the same shape the httpOnly refresh cookie will need in production.

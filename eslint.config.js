@@ -20,7 +20,7 @@ export default tseslint.config(
 
   // Node-side code
   {
-    files: ['apps/api/**/*.ts', 'packages/shared/**/*.ts', '*.js', '*.ts'],
+    files: ['apps/api/**/*.ts', 'packages/shared/**/*.ts', 'scripts/**/*.mjs', '*.js', '*.ts'],
     languageOptions: {
       globals: { ...globals.node },
     },
@@ -55,10 +55,10 @@ export default tseslint.config(
   },
 
   // Must come after the shared rules: flat config is last-match-wins, and the
-  // shared block sets `no-console` for every file. The test harness prints which
-  // MongoDB it selected, which is diagnostic output, not a stray debug statement.
+  // shared block sets `no-console` for every file. The test harness and the setup
+  // script talk to the developer on purpose; that is not stray debug output.
   {
-    files: ['apps/api/src/test/**/*.ts'],
+    files: ['apps/api/src/test/**/*.ts', 'scripts/**/*.mjs'],
     rules: { 'no-console': 'off' },
   },
 
