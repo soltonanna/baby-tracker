@@ -87,6 +87,16 @@ async function send(path: string, init: RequestInit): Promise<Outcome> {
 }
 
 function toApiError({ response, payload }: Outcome): ApiError {
+  // 304 carries no body by definition, so it can never satisfy a JSON call.
+  // We never make a request conditional ourselves; one arriving here means a
+  // cache in between revalidated on our behalf. Name it explicitly rather than
+  // letting it surface as a bodyless "unexpected error", and never retry it —
+  // the server sends `Cache-Control: no-store` on the routes where it would
+  // matter, so this is the backstop, not the mechanism.
+  if (response.status === 304) {
+    return new ApiError(304, 'NOT_MODIFIED', 'The API answered 304 to a request that needs a body');
+  }
+
   if (isApiErrorBody(payload)) {
     return new ApiError(
       response.status,

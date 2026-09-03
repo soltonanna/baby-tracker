@@ -279,6 +279,48 @@ describe('POST /auth/logout', () => {
   });
 });
 
+describe('cache headers', () => {
+  it('forbids caching every auth response, so identity is never revalidated', async () => {
+    const registered = await registerFresh();
+    const accessToken = registered.body.accessToken as string;
+    const cookie = refreshCookieValue(registered);
+
+    const responses = [
+      registered,
+      await request(app).get(url('/me')).set('Authorization', `Bearer ${accessToken}`),
+      await request(app).post(url('/refresh')).set('Cookie', cookie),
+      await request(app).post(url('/login')).send(CREDENTIALS),
+      await request(app).post(url('/logout')),
+    ];
+
+    for (const response of responses) {
+      expect(response.headers['cache-control']).toBe('no-store');
+    }
+  });
+
+  it('answers GET /auth/me in full even when the client offers a matching ETag', async () => {
+    // Express puts a weak ETag on every JSON response and /auth/me returns a
+    // stable body, so without `no-store` a browser would revalidate and could
+    // be handed a bodyless 304.
+    const { accessToken } = (await registerFresh()).body as { accessToken: string };
+    const bearer = `Bearer ${accessToken}`;
+
+    const first = await request(app).get(url('/me')).set('Authorization', bearer);
+    expect(first.status).toBe(200);
+
+    const etag = first.headers.etag;
+    expect(etag).toBeTypeOf('string');
+
+    const second = await request(app)
+      .get(url('/me'))
+      .set('Authorization', bearer)
+      .set('If-None-Match', etag);
+
+    expect(second.status).toBe(200);
+    expect(second.body.user.email).toBe('anahit@example.com');
+  });
+});
+
 describe('password hash exposure', () => {
   it('never appears in any auth response body', async () => {
     const registered = await registerFresh();

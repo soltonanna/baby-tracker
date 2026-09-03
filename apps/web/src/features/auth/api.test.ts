@@ -14,6 +14,9 @@ const json = (status: number, body: unknown): Response =>
 
 const noContent = (): Response => new Response(null, { status: 204 });
 
+/** 304 has no body and, from Express, no Content-Type either. */
+const notModified = (): Response => new Response(null, { status: 304 });
+
 const errorBody = (code: string) => ({ error: { code, message: code } });
 
 const USER = { id: 'u1', email: 'anahit@example.com', displayName: 'Anahit' };
@@ -95,6 +98,28 @@ describe('restoreSession', () => {
     // /auth/me would answer UNAUTHORIZED, which is not refreshable.
     expect(requestedPaths()).toEqual(['/api/v1/auth/refresh', '/api/v1/auth/me']);
     expect(getAccessToken()).toBe('fresh');
+  });
+
+  it('reaches a concrete state when /auth/me answers 304 Not Modified', async () => {
+    // Regression: a cached /auth/me revalidated to 304 after a successful
+    // refresh. A 304 has no body, so it cannot answer "who am I" — restoration
+    // must still settle rather than hang, which is what left the provider on
+    // "Restoring your session…" for ever.
+    fetchMock
+      .mockResolvedValueOnce(json(200, { accessToken: 'fresh', expiresIn: 900 }))
+      .mockResolvedValueOnce(notModified());
+
+    await expect(restoreSession()).resolves.toBeNull();
+
+    expect(requestedPaths()).toEqual(['/api/v1/auth/refresh', '/api/v1/auth/me']);
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it('settles even if the refresh itself answers 304', async () => {
+    fetchMock.mockResolvedValueOnce(notModified());
+
+    await expect(restoreSession()).resolves.toBeNull();
+    expect(getAccessToken()).toBeNull();
   });
 
   it('returns null and stays signed out when there is no valid cookie', async () => {

@@ -80,6 +80,19 @@ describe('errors', () => {
     expect((error as ApiError).details).toEqual([{ path: 'email', message: 'bad' }]);
   });
 
+  it('names a 304 rather than reporting a bodyless "unexpected error"', async () => {
+    setAccessToken('token-abc');
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 304 }));
+
+    const error = await apiFetch('/auth/me').catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBe('NOT_MODIFIED');
+    expect((error as ApiError).status).toBe(304);
+    // Never retried: a conditional response cannot become a body by asking again.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('does not refresh for a 401 that is not an expiry', async () => {
     setAccessToken('token-abc');
     fetchMock.mockResolvedValueOnce(json(401, errorBody('INVALID_CREDENTIALS')));

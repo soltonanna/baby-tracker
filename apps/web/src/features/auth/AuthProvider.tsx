@@ -35,32 +35,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // instead of at every call site.
   useEffect(() => onSessionEnded(forgetUser), [forgetUser]);
 
-  const restoreStarted = useRef(false);
+  const restoreOnce = useRef<Promise<PublicUser | null> | null>(null);
   useEffect(() => {
-    // React 18+ StrictMode runs effects twice in development. Restoring twice
-    // would fire two refreshes, and a second refresh with an already-rotated
-    // token is exactly what the API treats as reuse.
-    if (restoreStarted.current) {
-      return;
-    }
-    restoreStarted.current = true;
+    // React 18+ StrictMode runs effects twice in development: mount, cleanup,
+    // mount again. Restoring twice would fire two refreshes, and a second
+    // refresh with an already-rotated token is exactly what the API treats as
+    // reuse — so the *promise* is kept, and both runs await the same one.
+    //
+    // Keeping a "started" boolean instead is what caused the session to hang
+    // on reload: the first run's cleanup cancelled the only restore in flight,
+    // and the second run skipped starting another, so the result was dropped
+    // and the provider sat in `restoring` for ever. Every run must attach its
+    // own live subscriber.
+    restoreOnce.current ??= restoreSession();
 
-    let cancelled = false;
-    void restoreSession().then((restored) => {
-      if (cancelled) {
+    let subscribed = true;
+    const settle = (restored: PublicUser | null): void => {
+      if (!subscribed) {
         return;
       }
-      if (restored) {
-        setUser(restored);
-        setStatus('authenticated');
-      } else {
-        setUser(null);
-        setStatus('anonymous');
-      }
+      setUser(restored);
+      setStatus(restored ? 'authenticated' : 'anonymous');
+    };
+
+    // `restoreSession` resolves rather than rejects, but the rejection handler
+    // is not optional: there must be no path that leaves the provider in
+    // `restoring`.
+    void restoreOnce.current.then(settle, () => {
+      settle(null);
     });
 
     return () => {
-      cancelled = true;
+      subscribed = false;
     };
   }, []);
 
