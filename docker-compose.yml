@@ -1,22 +1,69 @@
-# Local MongoDB for development.
+# Local MongoDB for development, as a single-node replica set.
 #
-# Pinned to 8.0 rather than a floating `mongo:8` tag, and not 6.0: MongoDB 6.0
-# reached end of security support on 2025-07-31, so it no longer receives
-# patches. Mongoose 9 supports servers 6.x, 7.x and 8.x, so this is a lifecycle
-# and security choice, not a driver constraint. 8.0 is supported until
-# 2029-10-31 and is what MongoDB Atlas offers as its default.
+# Version: pinned to 8.0 rather than a floating `mongo:8` tag, and not 6.0:
+# MongoDB 6.0 reached end of security support on 2025-07-31. Mongoose 9 supports
+# servers 6.x, 7.x and 8.x, so this is a lifecycle choice, not a driver one. 8.0
+# is supported until 2029-10-31 and is what MongoDB Atlas offers as its default.
+#
+# Replica set: MongoDB offers multi-document transactions only on a replica set
+# or a sharded cluster — a standalone mongod rejects them outright. One node is
+# enough to make `session.withTransaction()` work, and Atlas is always a replica
+# set, so development matches production in the way that matters.
 #
 # Usage: docker compose up -d
-# Then set MONGODB_URI=mongodb://localhost:27017/baby_tracker in apps/api/.env
+# Initialisation is automatic and idempotent; no manual `rs.initiate()` is
+# needed, on the first run or any run after it.
 services:
   mongo:
     image: mongo:8.0
     container_name: baby-tracker-mongo
     restart: unless-stopped
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
     ports:
       - '27017:27017'
     volumes:
       - mongo-data:/data/db
+    healthcheck:
+      # Only asks whether mongod is answering — deliberately not whether the
+      # replica set is initialised, because mongo-init below is what does that
+      # and it waits on this check.
+      test:
+        [
+          'CMD',
+          'mongosh',
+          'mongodb://localhost:27017/?directConnection=true',
+          '--quiet',
+          '--eval',
+          'db.adminCommand({ ping: 1 }).ok',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 5s
+
+  # Runs once per `docker compose up`, then exits. Waits for mongod to be
+  # healthy rather than sleeping a fixed amount, so the normal startup race is
+  # handled by the condition rather than by hoping.
+  mongo-init:
+    image: mongo:8.0
+    container_name: baby-tracker-mongo-init
+    restart: 'no'
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - ./scripts/mongo-init-replset.js:/scripts/mongo-init-replset.js:ro
+    # A direct connection: before initiation there is no replica set to
+    # discover, and after it the set advertises `localhost`, which means
+    # something different inside this container than inside mongo's.
+    command:
+      [
+        'mongosh',
+        'mongodb://mongo:27017/?directConnection=true',
+        '--quiet',
+        '--file',
+        '/scripts/mongo-init-replset.js',
+      ]
 
 volumes:
   mongo-data:

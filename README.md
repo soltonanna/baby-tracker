@@ -14,7 +14,8 @@ Architecture, data model, API and roadmap: [`ARCHITECTURE_PROPOSAL.md`](./ARCHIT
 ## Requirements
 
 - **Node.js 22.22.0 or newer** (`.nvmrc` pins 22.23.2 — `nvm use`)
-- **MongoDB 8.0** — either `docker compose up -d`, a local install, or MongoDB Atlas
+- **MongoDB 8.0**, as a single-node replica set — `docker compose up -d` sets this
+  up for you (see below), or use MongoDB Atlas, which is always a replica set
 
 ## Getting started
 
@@ -109,6 +110,49 @@ the offset lands an hour into the previous day. `Asia/Beirut` has the same shape
 of transition. The tests cover Yerevan (no DST), Berlin (ordinary DST), Beirut
 and Santiago (midnight transitions), in both directions, plus a sweep asserting
 that consecutive days never overlap and never leave a gap.
+
+## MongoDB runs as a single-node replica set
+
+`docker compose up -d` starts mongod with `--replSet rs0` and initialises the
+set automatically. There is no manual `rs.initiate()` step, on the first run or
+any run after it.
+
+**Why.** MongoDB offers multi-document transactions only on a replica set or a
+sharded cluster; a standalone server rejects them with `IllegalOperation`. One
+node is enough to make `session.withTransaction()` work, and MongoDB Atlas is
+always a replica set, so development matches production in the way that matters.
+
+**How the initialisation works.** A second one-shot service, `mongo-init`, waits
+for mongod's healthcheck to pass — not for a fixed number of seconds — then runs
+`scripts/mongo-init-replset.js` over a direct connection. That script initiates
+the set only if it is not already initiated, then polls until the node is
+PRIMARY, so `docker compose up` is safe to repeat and the container is genuinely
+ready when it finishes. Watch it with `docker compose logs mongo-init`.
+
+The set advertises its member as `localhost:27017` so that clients on your
+machine, which reach it through the published port, resolve the primary
+correctly. That does mean an application running _inside_ Docker could not use
+this set as-is; nothing in this project does.
+
+**Connection string.** `apps/api/.env` needs `?replicaSet=rs0`:
+
+```text
+MONGODB_URI=mongodb://127.0.0.1:27017/baby_tracker?replicaSet=rs0
+```
+
+**If you already had a standalone container**, recreate it — the data volume is
+kept, so nothing is lost:
+
+```bash
+docker compose up -d --force-recreate
+```
+
+**Full reset**, discarding all local data, if the set ever ends up in a state
+that will not initialise:
+
+```bash
+docker compose down -v && docker compose up -d
+```
 
 ## Tests
 

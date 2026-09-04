@@ -22,6 +22,28 @@ Babies and tracker features have not been started.
 
 ## Completed work
 
+### Phase 2B.2 — MongoDB replica set (2026-09-04)
+
+Infrastructure only. No application behaviour changed.
+
+- `docker-compose.yml` runs mongod with `--replSet rs0`, and a one-shot
+  `mongo-init` service initialises the set idempotently after the healthcheck
+  passes. No manual `rs.initiate()`, on any run. The member is advertised as
+  `localhost:27017` so clients on the host resolve the primary correctly.
+- The integration harness uses `MongoMemoryReplSet` instead of
+  `MongoMemoryServer`. Per-test-file database isolation is untouched: each file
+  still generates its own database name and drops it afterwards.
+- Every MongoDB the harness will accept is now a replica set. A standalone —
+  including one named explicitly by `MONGODB_TEST_URI` — is refused with an
+  explanation rather than used and left to fail inside a transaction.
+- A transaction smoke test proves commit, rollback and read isolation actually
+  work, rather than trusting that the server reports `setName`.
+
+**D21 is now unblocked but deliberately not acted on.** Family creation still
+uses the compensating write from 2B.1. Making transactions available and
+adopting them are separate changes, so that a failure in either is easy to
+attribute.
+
 ### Phase 2B.1 — Family foundation (2026-09-03)
 
 The authorization boundary every future family-scoped resource will use.

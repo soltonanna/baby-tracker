@@ -42,6 +42,22 @@ export default tseslint.config(
     },
   },
 
+  // Run by mongosh, not by Node: its globals are the shell's, and it is a plain
+  // script rather than a module.
+  {
+    files: ['scripts/mongo-init-replset.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        db: 'readonly',
+        print: 'readonly',
+        quit: 'readonly',
+        rs: 'readonly',
+        sleep: 'readonly',
+      },
+    },
+  },
+
   // Shared rules
   {
     rules: {
