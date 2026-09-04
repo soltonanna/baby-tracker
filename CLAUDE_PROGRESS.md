@@ -15,12 +15,43 @@ Architecture and roadmap: `ARCHITECTURE_PROPOSAL.md`.
 
 ## Current phase
 
-**Phase 1A — Authentication. Complete, awaiting approval.**
-Phase 1B (families) has not been started.
+**Phase 2B.1 — Family foundation. Complete, awaiting approval.**
+Babies and tracker features have not been started.
 
 ---
 
 ## Completed work
+
+### Phase 2B.1 — Family foundation (2026-09-03)
+
+The authorization boundary every future family-scoped resource will use.
+
+- `Family` (name, createdBy, timestamps) and `FamilyMember` (familyId, userId,
+  role, timestamps). Roles are `OWNER` and `MEMBER` only.
+- Indexes: `{familyId, userId}` unique — both the duplicate-membership
+  constraint and the hot "may this user touch this family?" lookup — and
+  `{userId}` for listing a caller's families, which the compound index cannot
+  serve. Nothing on `Family` beyond `_id`; families are only ever fetched by id.
+- `POST /families`, `GET /families`, `GET /families/:familyId`, with
+  `authenticate` applied at the router level.
+- `requireFamilyMembership` / `requireFamilyRole(...)` resolve the caller's
+  membership onto `req.familyScope`, read through `getFamilyScope(req)` —
+  mirroring the existing `req.auth` / `getAuth` convention. Service functions
+  take the scope rather than a bare id, so a function that cannot be called
+  without a resolved membership cannot be called by a non-member.
+- Anti-enumeration: a malformed id, a non-existent family and another user's
+  family all return a byte-identical 404. A role refusal returns 403, because a
+  member already knows the family exists.
+
+### Phase 2A.1 — Frontend authentication (2026-09-02/03)
+
+Register, sign in, session restoration across reload, sign out. Access token in
+memory only; refresh through the httpOnly cookie with one in-flight refresh
+promise; refresh-and-retry on `TOKEN_EXPIRED`; public and protected route
+branches. Two defects found and fixed afterwards: a StrictMode guard that left
+session restoration hanging for ever, and `GET /auth/me` being answerable with a
+bodyless 304 (auth routes now send `Cache-Control: no-store` and drop
+conditional request headers).
 
 ### Phase 1A — Authentication (2026-09-01)
 
@@ -129,6 +160,7 @@ abstraction built for hypothetical scale.
 | —   | Whether to enable `exactOptionalPropertyTypes` once Mongoose models exist | Phase 1        |
 | —   | Whether to enable type-aware ESLint rules (currently off for speed)       | Any time       |
 | —   | Email provider, which unblocks password reset and email verification      | Phase 1D       |
+| D21 | Whether to move dev and test Mongo to a single-node replica set           | Before Phase 2 |
 
 ---
 
@@ -177,7 +209,10 @@ false` plus a database-readiness guard in Phase 1B.
 
 ## Next step
 
-Await approval, then **Phase 1B — families**:
+Await approval, then babies (family-scoped, reusing `requireFamilyMembership`),
+and the web UI for families. Neither is started.
+
+Superseded plan, kept for context — **Phase 1B — families**:
 
 - API: `Family` and `FamilyMember` models; the authorization chain from
   `ARCHITECTURE_PROPOSAL.md` §4.3 — membership resolution, role checks, and a

@@ -9,7 +9,16 @@
 export const LOCALES = ['ru', 'en'] as const;
 export type Locale = (typeof LOCALES)[number];
 
-export const FAMILY_ROLES = ['owner', 'parent', 'caregiver'] as const;
+/**
+ * Roles inside a family.
+ *
+ * Deliberately only two for now. `ARCHITECTURE_PROPOSAL.md` §5.3 sketched
+ * owner/parent/caregiver, but caregiver access is a Phase 6 concern and an
+ * unused role is a permission nobody has thought through. Widening this tuple
+ * later is additive; the authorization middleware reads from it, so nothing
+ * hard-codes a role string.
+ */
+export const FAMILY_ROLES = ['OWNER', 'MEMBER'] as const;
 export type FamilyRole = (typeof FAMILY_ROLES)[number];
 
 export const BABY_SEXES = ['male', 'female', 'unspecified'] as const;
