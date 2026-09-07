@@ -21,8 +21,12 @@ export type Locale = (typeof LOCALES)[number];
 export const FAMILY_ROLES = ['OWNER', 'MEMBER'] as const;
 export type FamilyRole = (typeof FAMILY_ROLES)[number];
 
-export const BABY_SEXES = ['male', 'female', 'unspecified'] as const;
-export type BabySex = (typeof BABY_SEXES)[number];
+/**
+ * Optional on a baby: the product never requires it, and a family that would
+ * rather not record it should not have to.
+ */
+export const BABY_GENDERS = ['MALE', 'FEMALE'] as const;
+export type BabyGender = (typeof BABY_GENDERS)[number];
 
 /**
  * Event types. Adding a new one means adding a member here, a variant to the
