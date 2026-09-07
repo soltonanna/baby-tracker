@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { createBabySchema } from '@baby-tracker/shared';
 import { validate } from '../../middleware/validate.js';
+import { requireBabyInFamily } from '../../middleware/babyAccess.js';
+import { babyEventRouter } from '../events/routes.js';
 import * as controller from './controller.js';
 
 /**
@@ -17,3 +19,8 @@ export const babyRouter: Router = Router();
 babyRouter.post('/', validate({ body: createBabySchema }), controller.create);
 babyRouter.get('/', controller.list);
 babyRouter.get('/:babyId', controller.getOne);
+
+// Tracker events live inside a baby, in the URL and in the code. The baby is
+// resolved once here, so nothing under /events can be reached for a baby that
+// does not belong to the caller's family.
+babyRouter.use('/:babyId/events', requireBabyInFamily, babyEventRouter);

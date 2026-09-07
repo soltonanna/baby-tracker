@@ -29,6 +29,13 @@ export const BABY_GENDERS = ['MALE', 'FEMALE'] as const;
 export type BabyGender = (typeof BABY_GENDERS)[number];
 
 /**
+ * Daily tracker events. One collection holds all of them, distinguished by this
+ * field, so a new kind of event is a new member here rather than a new model.
+ */
+export const BABY_EVENT_TYPES = ['FEEDING', 'SLEEP', 'DIAPER', 'NOTE'] as const;
+export type BabyEventType = (typeof BABY_EVENT_TYPES)[number];
+
+/**
  * Event types. Adding a new one means adding a member here, a variant to the
  * event `data` union, and a form component — nothing else (spec §8, §28).
  */
