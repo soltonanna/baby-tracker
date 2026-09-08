@@ -920,3 +920,230 @@ describe('adding a sleep', () => {
     expect(createdEventBodies()).toEqual([]);
   });
 });
+
+describe('adding a nappy', () => {
+  /** Opens the nappy form for the baby selected by default, and returns its fields. */
+  async function openDiaperForm(): Promise<{ time: HTMLInputElement }> {
+    await userEvent.click(await screen.findByRole('button', { name: 'Add nappy' }));
+
+    return { time: await screen.findByLabelText('Time') };
+  }
+
+  /** One of the four kind radios, by its translated label. */
+  const kindRadio = (label: string): HTMLInputElement =>
+    screen.getByRole('radio', { name: label }) as HTMLInputElement;
+
+  it('opens the nappy form when the Add nappy action is used', async () => {
+    stubApi({});
+    renderToday();
+
+    // The action is offered next to the other three, and no form is open yet.
+    expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Add sleep' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Add note' })).toBeDefined();
+    expect(screen.queryByRole('radio')).toBeNull();
+
+    const { time } = await openDiaperForm();
+
+    expect(screen.getByRole('heading', { name: 'New nappy' })).toBeDefined();
+    // Defaulted to the current local time rather than left empty.
+    expect(time.value).toMatch(/^\d{2}:\d{2}$/);
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined();
+    // The other forms are separate actions, not this one.
+    expect(screen.queryByLabelText('Note')).toBeNull();
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+    expect(screen.queryByLabelText('End')).toBeNull();
+  });
+
+  it('offers the four shared diaper kinds, with the commonest preselected', async () => {
+    stubApi({});
+    renderToday();
+
+    await openDiaperForm();
+
+    // The vocabulary is DIAPER_KINDS from the shared package, in its order.
+    // Read off the labels, which is what a parent sees and what gives each
+    // visually hidden radio its accessible name.
+    const kindLabels = screen
+      .getAllByRole('radio')
+      .map((radio) => radio.closest('label')?.textContent?.trim());
+    expect(kindLabels).toEqual(['Wet', 'Dirty', 'Wet and dirty', 'Dry']);
+    // Two taps rather than three for the change a parent makes most often.
+    expect(kindRadio('Wet').checked).toBe(true);
+    expect(kindRadio('Dry').checked).toBe(false);
+  });
+
+  it('sends a DIAPER event for the selected baby, defaulting to a wet nappy', async () => {
+    stubApi({});
+    renderToday();
+
+    const { time } = await openDiaperForm();
+    const chosenTime = time.value;
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toEqual([
+        {
+          type: 'DIAPER',
+          startedAt: startedAtFor(chosenTime),
+          details: 'wet',
+        },
+      ]);
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(String(posted?.[0])).toContain(`/families/${FAMILY_ID}/babies/${ANI_ID}/events`);
+  });
+
+  it('sends the canonical kind token, not the label the parent read', async () => {
+    stubApi({});
+    renderToday();
+
+    await openDiaperForm();
+    await userEvent.click(kindRadio('Wet and dirty'));
+
+    expect(kindRadio('Wet and dirty').checked).toBe(true);
+    expect(kindRadio('Wet').checked).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // `wet_and_dirty`, never "Wet and dirty": what is stored must not depend on
+    // the language the parent happened to be using.
+    await waitFor(() => {
+      expect(createdEventBodies()).toMatchObject([{ type: 'DIAPER', details: 'wet_and_dirty' }]);
+    });
+  });
+
+  it('rejects a cleared time without sending anything', async () => {
+    stubApi({});
+    renderToday();
+
+    const { time } = await openDiaperForm();
+    setTime(time, '');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Please enter a valid time.')).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
+    // Still open, so the parent can simply pick a time.
+    expect(screen.getByLabelText('Time')).toBeDefined();
+  });
+
+  it('posts to the baby that is selected, not the first one', async () => {
+    stubApi({});
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Nare' }));
+
+    await openDiaperForm();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toHaveLength(1);
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(String(posted?.[0])).toContain(`/families/${FAMILY_ID}/babies/${NARE_ID}/events`);
+  });
+
+  it('closes the form and reloads the events once the nappy is saved', async () => {
+    const diaper = event('event-diaper', ANI_ID, { type: 'DIAPER', details: 'dirty' });
+    let saved = false;
+
+    stubApi({
+      events: () => Promise.resolve(json({ events: saved ? [diaper] : [] })),
+      createEvent: (babyId) => {
+        saved = true;
+        return Promise.resolve(json({ event: event('event-diaper', babyId) }, 201));
+      },
+    });
+    renderToday();
+
+    const card = await eventsCard();
+    expect(await within(card).findByText('Nothing recorded yet.')).toBeDefined();
+
+    await openDiaperForm();
+    await userEvent.click(kindRadio('Dirty'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // The new nappy is on screen, and the form is gone.
+    expect(await screen.findByText('Dirty')).toBeDefined();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add nappy' })).toBeDefined();
+    expect(requestedEventBabyIds()).toEqual([ANI_ID, ANI_ID]);
+  });
+
+  it('closes the form without sending anything when cancelled', async () => {
+    stubApi({});
+    renderToday();
+
+    await openDiaperForm();
+    await userEvent.click(kindRadio('Dry'));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(createdEventBodies()).toEqual([]);
+    expect(await screen.findByRole('button', { name: 'Add nappy' })).toBeDefined();
+  });
+
+  it('reports a failed save and keeps what was entered', async () => {
+    stubApi({ createEvent: () => Promise.resolve(apiError(500, 'INTERNAL_ERROR')) });
+    renderToday();
+
+    const { time } = await openDiaperForm();
+    setTime(time, '07:30');
+    await userEvent.click(kindRadio('Wet and dirty'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Could not save the nappy change. Please try again.',
+    );
+    // Nothing is cleared: the parent retries rather than re-entering.
+    expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('07:30');
+    expect(kindRadio('Wet and dirty').checked).toBe(true);
+  });
+
+  it('closes an unfinished nappy form when the baby is switched', async () => {
+    stubApi({});
+    renderToday();
+
+    await openDiaperForm();
+    await userEvent.click(kindRadio('Dry'));
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Nare' }));
+
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add nappy' })).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
+  });
+
+  it('shows a saved nappy by its translated kind, not its stored token', async () => {
+    const diaper = event('event-diaper', ANI_ID, { type: 'DIAPER', details: 'wet_and_dirty' });
+    stubApi({ events: () => Promise.resolve(json({ events: [diaper] })) });
+    renderToday();
+
+    const card = await eventsCard();
+    const item = (await within(card).findAllByRole('listitem'))[0] as HTMLElement;
+
+    expect(within(item).getByText('Nappy')).toBeDefined();
+    expect(within(item).getByText('Wet and dirty')).toBeDefined();
+    expect(within(item).queryByText('wet_and_dirty')).toBeNull();
+  });
+
+  it('shows a diaper whose details are not one of the four exactly as entered', async () => {
+    const diaper = event('event-diaper', ANI_ID, { type: 'DIAPER', details: 'leaked everywhere' });
+    stubApi({ events: () => Promise.resolve(json({ events: [diaper] })) });
+    renderToday();
+
+    const card = await eventsCard();
+    const item = (await within(card).findAllByRole('listitem'))[0] as HTMLElement;
+
+    expect(within(item).getByText('leaked everywhere')).toBeDefined();
+  });
+});

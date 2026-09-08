@@ -63,6 +63,7 @@
     "noBabies": "No babies in this family yet.",
     "addFeeding": "Add feeding",
     "addSleep": "Add sleep",
+    "addDiaper": "Add nappy",
     "addNote": "Add note",
     "recentEvents": "Recent events",
     "loadingEvents": "Loading events…",
@@ -109,6 +110,24 @@
         "requiredEndTime": "Please enter an end time.",
         "invalidEndTime": "Please enter a valid end time.",
         "saveFailed": "Could not save the sleep. Please try again."
+      }
+    },
+    "diaper": {
+      "title": "New nappy",
+      "time": "Time",
+      "kind": "Kind",
+      "kinds": {
+        "wet": "Wet",
+        "dirty": "Dirty",
+        "wet_and_dirty": "Wet and dirty",
+        "dry": "Dry"
+      },
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "invalidTime": "Please enter a valid time.",
+        "saveFailed": "Could not save the nappy change. Please try again."
       }
     },
     "note": {

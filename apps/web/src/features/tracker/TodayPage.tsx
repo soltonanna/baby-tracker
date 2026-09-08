@@ -8,6 +8,7 @@ import { queryKeys } from '../../services/queryKeys.js';
 import { fetchBabies, fetchBabyEvents, fetchFamilies } from './api.js';
 import { BabySelector } from './BabySelector.js';
 import { EventList } from './EventList.js';
+import { DiaperForm } from './DiaperForm.js';
 import { FeedingForm } from './FeedingForm.js';
 import { NoteForm } from './NoteForm.js';
 import { SleepForm } from './SleepForm.js';
@@ -15,8 +16,8 @@ import { SleepForm } from './SleepForm.js';
 /**
  * The daily tracker: pick a baby, see their recent events.
  *
- * Notes, feedings and sleeps can be added; the remaining event types, editing
- * and the "both babies" action come later.
+ * Notes, feedings, sleeps and nappy changes can be added; the remaining event
+ * types, editing and the "both babies" action come later.
  * The app is single-family for now, so the caller's first family is used
  * rather than asking them to choose one.
  */
@@ -26,7 +27,7 @@ import { SleepForm } from './SleepForm.js';
  * one form is ever open, and a union says so instead of relying on every flag
  * being cleared whenever another is set.
  */
-type OpenForm = 'note' | 'feeding' | 'sleep';
+type OpenForm = 'note' | 'feeding' | 'sleep' | 'diaper';
 export function TodayPage() {
   const { t } = useTranslation();
 
@@ -120,6 +121,17 @@ export function TodayPage() {
             setOpenForm(null);
           }}
         />
+      ) : openForm === 'diaper' && selectedBabyId !== null ? (
+        <DiaperForm
+          familyId={familyId}
+          babyId={selectedBabyId}
+          onSaved={() => {
+            setOpenForm(null);
+          }}
+          onCancel={() => {
+            setOpenForm(null);
+          }}
+        />
       ) : openForm === 'note' && selectedBabyId !== null ? (
         <NoteForm
           familyId={familyId}
@@ -132,10 +144,11 @@ export function TodayPage() {
           }}
         />
       ) : (
-        // A grid rather than a row: three actions of equal width, each still a
+        // A grid rather than a row: four actions of equal width, each still a
         // full touch target, and a label that wraps rather than one that is cut
-        // off on the narrowest phone.
-        <div className="grid grid-cols-3 gap-2">
+        // off on the narrowest phone. Two columns rather than four, because four
+        // labels of this length side by side are four columns of wrapped text.
+        <div className="grid grid-cols-2 gap-2">
           <Button
             fullWidth
             className="px-2"
@@ -154,6 +167,16 @@ export function TodayPage() {
             }}
           >
             {t('today.addSleep')}
+          </Button>
+          <Button
+            fullWidth
+            variant="secondary"
+            className="px-2"
+            onClick={() => {
+              setOpenForm('diaper');
+            }}
+          >
+            {t('today.addDiaper')}
           </Button>
           <Button
             fullWidth

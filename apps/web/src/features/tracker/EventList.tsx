@@ -1,5 +1,6 @@
-import { durationSeconds, type BabyEvent } from '@baby-tracker/shared';
+import { DIAPER_KINDS, durationSeconds, type BabyEvent } from '@baby-tracker/shared';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 
 /** Times only — the list is one baby's recent events, so the date is context. */
 function formatTime(iso: string, locale: string): string {
@@ -38,6 +39,25 @@ function formatAmount(event: BabyEvent): string | null {
   return event.unit ? `${event.amount} ${event.unit}` : String(event.amount);
 }
 
+/**
+ * The details line, as a parent should read it.
+ *
+ * A nappy's `details` is a canonical `DIAPER_KINDS` token rather than prose —
+ * that is how the kind is stored — so it is translated here instead of being
+ * shown as `wet_and_dirty`. Everything else, including a diaper whose details
+ * are not one of the four, is shown exactly as it was entered.
+ */
+function formatDetails(event: BabyEvent, t: TFunction): string | null {
+  const { details } = event;
+  if (details === undefined || details.length === 0) {
+    return null;
+  }
+  if (event.type === 'DIAPER' && (DIAPER_KINDS as readonly string[]).includes(details)) {
+    return t(`today.diaper.kinds.${details}`);
+  }
+  return details;
+}
+
 export function EventList({ events }: { events: BabyEvent[] }) {
   const { t, i18n } = useTranslation();
 
@@ -46,6 +66,7 @@ export function EventList({ events }: { events: BabyEvent[] }) {
       {events.map((event) => {
         const amount = formatAmount(event);
         const duration = sleepDuration(event);
+        const details = formatDetails(event, t);
         return (
           <li key={event.id} className="rounded-card border border-line bg-surface px-4 py-3">
             <div className="flex items-baseline justify-between gap-3">
@@ -63,7 +84,7 @@ export function EventList({ events }: { events: BabyEvent[] }) {
                   : t('today.duration.minutes', { minutes: duration.minutes })}
               </p>
             )}
-            {event.details ? <p className="mt-1 text-sm text-muted">{event.details}</p> : null}
+            {details === null ? null : <p className="mt-1 text-sm text-muted">{details}</p>}
           </li>
         );
       })}

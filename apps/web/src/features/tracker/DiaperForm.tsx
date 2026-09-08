@@ -1,0 +1,161 @@
+import { useState, type FormEvent } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import { DIAPER_KINDS, type DiaperKind } from '@baby-tracker/shared';
+import { Button } from '../../components/ui/Button.js';
+import { Card } from '../../components/ui/Card.js';
+import { TextField } from '../../components/ui/TextField.js';
+import { queryKeys } from '../../services/queryKeys.js';
+import { createBabyEvent } from './api.js';
+import { startedAtFrom, timeInputValue } from './eventTime.js';
+
+/**
+ * Recording a nappy change: when, and which kind.
+ *
+ * The vocabulary is `DIAPER_KINDS` from the shared package — the same four
+ * values as spec §11 and `ARCHITECTURE_PROPOSAL.md` §5.5 — not a list written
+ * out again here. Nothing else is recorded: §11 asks for the simplest possible
+ * interface and says extra fields can come later.
+ *
+ * The kind travels in `details`, because that is the contract the API already
+ * has. `createBabyEventSchema` is flat and type-agnostic on purpose, and the
+ * existing events integration test creates a diaper as `details: 'wet'` and
+ * asserts it round-trips. A first-class `kind` field would be a shared and
+ * backend change, so this form uses what is already there rather than inventing
+ * a second way to say the same thing. What is stored is the canonical token,
+ * never the translated label, so a Russian-language parent and an
+ * English-language one write the same value.
+ *
+ * `wet` is preselected. That is the common change by a wide margin, it is the
+ * difference between two taps and three at 3am, and — unlike the sleep form's
+ * end time, which is deliberately left empty — the chosen kind is visible on
+ * screen the whole time, so a default here cannot be saved unnoticed.
+ */
+
+export interface DiaperFormProps {
+  familyId: string;
+  babyId: string;
+  /** Called once the nappy change is saved and the event list has been refreshed. */
+  onSaved: () => void;
+  onCancel: () => void;
+}
+
+export function DiaperForm({ familyId, babyId, onSaved, onCancel }: DiaperFormProps) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  // Defaulted once, on mount: the clock must not move under the parent while
+  // they are choosing.
+  const [time, setTime] = useState(() => timeInputValue(new Date()));
+  const [kind, setKind] = useState<DiaperKind>('wet');
+  const [timeError, setTimeError] = useState<string | undefined>(undefined);
+
+  const save = useMutation({
+    mutationFn: (payload: { startedAt: string; kind: DiaperKind }) =>
+      createBabyEvent(familyId, babyId, {
+        type: 'DIAPER',
+        startedAt: payload.startedAt,
+        details: payload.kind,
+      }),
+    onSuccess: async () => {
+      // Awaited, so the form is still in its saving state until the list the
+      // parent is about to look at actually holds the new event.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.babyEvents(familyId, babyId),
+      });
+      onSaved();
+    },
+  });
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+
+    const startedAt = startedAtFrom(time, new Date());
+    setTimeError(startedAt === null ? t('today.diaper.errors.invalidTime') : undefined);
+
+    // The kind needs no validation: it is one of a fixed set and one of them is
+    // always selected, so there is no empty state to reject.
+    if (startedAt === null) {
+      return;
+    }
+
+    save.mutate({ startedAt, kind });
+  }
+
+  return (
+    <Card title={t('today.diaper.title')}>
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        {save.isError ? (
+          <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
+            {t('today.diaper.errors.saveFailed')}
+          </p>
+        ) : null}
+
+        <TextField
+          label={t('today.diaper.time')}
+          type="time"
+          name="startedAt"
+          value={time}
+          onChange={(event) => {
+            setTime(event.target.value);
+          }}
+          error={timeError}
+          disabled={save.isPending}
+          required
+        />
+
+        <fieldset className="space-y-1" disabled={save.isPending}>
+          <legend className="mb-1 block text-sm font-medium text-ink">
+            {t('today.diaper.kind')}
+          </legend>
+          {/*
+            Real radios, visually hidden and driven by their labels: a full
+            touch target each, keyboard and screen-reader behaviour for free,
+            and two columns rather than four so a label wraps instead of being
+            cut off on the narrowest phone.
+          */}
+          <div className="grid grid-cols-2 gap-2">
+            {DIAPER_KINDS.map((diaperKind) => {
+              const selected = diaperKind === kind;
+              return (
+                <label
+                  key={diaperKind}
+                  className={[
+                    'min-h-touch flex cursor-pointer items-center justify-center rounded-card',
+                    'border px-3 text-center text-base font-medium',
+                    'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2',
+                    'has-[:focus-visible]:outline-accent',
+                    selected
+                      ? 'border-accent bg-accent-soft text-accent'
+                      : 'border-line bg-surface text-muted',
+                  ].join(' ')}
+                >
+                  <input
+                    type="radio"
+                    name="kind"
+                    value={diaperKind}
+                    checked={selected}
+                    onChange={() => {
+                      setKind(diaperKind);
+                    }}
+                    className="sr-only"
+                  />
+                  {t(`today.diaper.kinds.${diaperKind}`)}
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <div className="flex gap-2">
+          <Button type="submit" fullWidth disabled={save.isPending}>
+            {save.isPending ? t('today.diaper.saving') : t('today.diaper.save')}
+          </Button>
+          <Button type="button" variant="quiet" onClick={onCancel} disabled={save.isPending}>
+            {t('today.diaper.cancel')}
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
