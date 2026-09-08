@@ -39,6 +39,8 @@ export async function fetchBabyEvents(familyId: string, babyId: string): Promise
 export interface CreateBabyEventPayload {
   type: BabyEventType;
   startedAt: IsoDateTime;
+  amount?: number;
+  unit?: string;
   details?: string;
 }
 

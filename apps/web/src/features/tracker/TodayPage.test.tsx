@@ -130,6 +130,14 @@ const createdEventBodies = (): unknown[] =>
     .filter((call) => (call[1] as RequestInit | undefined)?.method === 'POST')
     .map((call) => JSON.parse(String((call[1] as RequestInit).body)) as unknown);
 
+/** The instant a `HH:MM` shown in an entry form stands for, in this machine's zone. */
+function startedAtFor(time: string): string {
+  const [hours, minutes] = time.split(':').map(Number);
+  const date = new Date();
+  date.setHours(hours ?? 0, minutes ?? 0, 0, 0);
+  return date.toISOString();
+}
+
 function renderToday(): void {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -289,14 +297,6 @@ describe('loading, empty and error states', () => {
 });
 
 describe('adding a note', () => {
-  /** The instant a `HH:MM` shown in the form stands for, in this machine's zone. */
-  function startedAtFor(time: string): string {
-    const [hours, minutes] = time.split(':').map(Number);
-    const date = new Date();
-    date.setHours(hours ?? 0, minutes ?? 0, 0, 0);
-    return date.toISOString();
-  }
-
   /** Opens the note form for the baby selected by default, and returns its fields. */
   async function openNoteForm(): Promise<{ time: HTMLInputElement; details: HTMLTextAreaElement }> {
     await userEvent.click(await screen.findByRole('button', { name: 'Add note' }));
@@ -417,5 +417,225 @@ describe('adding a note', () => {
     expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe(
       'Smiled at the window',
     );
+  });
+});
+
+describe('adding a feeding', () => {
+  /** Opens the feeding form for the baby selected by default, and returns its fields. */
+  async function openFeedingForm(): Promise<{
+    time: HTMLInputElement;
+    amount: HTMLInputElement;
+    unit: HTMLSelectElement;
+  }> {
+    await userEvent.click(await screen.findByRole('button', { name: 'Add feeding' }));
+
+    return {
+      time: await screen.findByLabelText('Time'),
+      amount: screen.getByLabelText('Amount'),
+      unit: screen.getByLabelText('Unit'),
+    };
+  }
+
+  it('opens the feeding form when the Add feeding action is used', async () => {
+    stubApi({});
+    renderToday();
+
+    // The action is offered next to the note one, and neither form is open yet.
+    expect(await screen.findByRole('button', { name: 'Add note' })).toBeDefined();
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+
+    const { time, amount, unit } = await openFeedingForm();
+
+    expect(screen.getByRole('heading', { name: 'New feeding' })).toBeDefined();
+    // Defaulted to the current local time rather than left empty.
+    expect(time.value).toMatch(/^\d{2}:\d{2}$/);
+    expect(amount.value).toBe('');
+    expect(unit.value).toBe('ml');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined();
+    // The note form is a separate action, not this one.
+    expect(screen.queryByLabelText('Note')).toBeNull();
+  });
+
+  it('requires an amount before anything is sent', async () => {
+    stubApi({});
+    renderToday();
+
+    await openFeedingForm();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Please enter an amount.')).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
+    // Still open, so the parent can simply type.
+    expect(screen.getByLabelText('Amount')).toBeDefined();
+  });
+
+  it('rejects a negative amount without sending anything', async () => {
+    stubApi({});
+    renderToday();
+
+    const { amount } = await openFeedingForm();
+    await userEvent.type(amount, '-5');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Please enter a valid amount.')).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
+  });
+
+  it('sends a FEEDING event for the selected baby, in millilitres', async () => {
+    stubApi({});
+    renderToday();
+
+    const { time, amount } = await openFeedingForm();
+    const chosenTime = time.value;
+
+    await userEvent.type(amount, '120');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toEqual([
+        {
+          type: 'FEEDING',
+          startedAt: startedAtFor(chosenTime),
+          amount: 120,
+          unit: 'ml',
+        },
+      ]);
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(String(posted?.[0])).toContain(`/families/${FAMILY_ID}/babies/${ANI_ID}/events`);
+  });
+
+  it('converts an amount entered in ounces to canonical millilitres', async () => {
+    stubApi({});
+    renderToday();
+
+    const { amount, unit } = await openFeedingForm();
+    await userEvent.selectOptions(unit, 'oz');
+    await userEvent.type(amount, '4');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toHaveLength(1);
+    });
+    // 4 US fl oz is 118.29… ml; the shared conversion rounds canonical ml whole.
+    // Asserted as a literal rather than by calling the converter, so a change to
+    // the conversion is caught here instead of cancelling itself out.
+    expect(createdEventBodies()[0]).toMatchObject({
+      type: 'FEEDING',
+      amount: 118,
+      unit: 'ml',
+    });
+  });
+
+  it('keeps showing the unit the parent picked while they are editing', async () => {
+    stubApi({});
+    renderToday();
+
+    const { amount, unit } = await openFeedingForm();
+    expect(unit.value).toBe('ml');
+
+    await userEvent.selectOptions(unit, 'oz');
+    expect(unit.value).toBe('oz');
+
+    // Still ounces once there is a value in the field: converting to millilitres
+    // happens on submit, not under the parent while they type.
+    await userEvent.type(amount, '4');
+    expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('oz');
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('4');
+  });
+
+  it('posts to the baby that is selected, not the first one', async () => {
+    stubApi({});
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Nare' }));
+
+    const { amount } = await openFeedingForm();
+    await userEvent.type(amount, '80');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toHaveLength(1);
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(String(posted?.[0])).toContain(`/families/${FAMILY_ID}/babies/${NARE_ID}/events`);
+  });
+
+  it('closes the form and reloads the events once the feeding is saved', async () => {
+    const feeding = event('event-feeding', ANI_ID, { type: 'FEEDING', amount: 120, unit: 'ml' });
+    let saved = false;
+
+    stubApi({
+      events: () => Promise.resolve(json({ events: saved ? [feeding] : [] })),
+      createEvent: (babyId) => {
+        saved = true;
+        return Promise.resolve(json({ event: event('event-feeding', babyId) }, 201));
+      },
+    });
+    renderToday();
+
+    const card = await eventsCard();
+    expect(await within(card).findByText('Nothing recorded yet.')).toBeDefined();
+
+    const { amount } = await openFeedingForm();
+    await userEvent.type(amount, '120');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // The new feeding is on screen, and the form is gone.
+    expect(await screen.findByText('120 ml')).toBeDefined();
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+    expect(requestedEventBabyIds()).toEqual([ANI_ID, ANI_ID]);
+  });
+
+  it('closes the form without sending anything when cancelled', async () => {
+    stubApi({});
+    renderToday();
+
+    const { amount } = await openFeedingForm();
+    await userEvent.type(amount, '120');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+    expect(createdEventBodies()).toEqual([]);
+    expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+  });
+
+  it('reports a failed save and keeps what was entered', async () => {
+    stubApi({ createEvent: () => Promise.resolve(apiError(500, 'INTERNAL_ERROR')) });
+    renderToday();
+
+    const { amount, unit } = await openFeedingForm();
+    await userEvent.selectOptions(unit, 'oz');
+    await userEvent.type(amount, '4');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Could not save the feeding. Please try again.',
+    );
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('4');
+    expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('oz');
+  });
+
+  it('closes an unfinished feeding form when the baby is switched', async () => {
+    stubApi({});
+    renderToday();
+
+    const { amount } = await openFeedingForm();
+    await userEvent.type(amount, '120');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Nare' }));
+
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
   });
 });

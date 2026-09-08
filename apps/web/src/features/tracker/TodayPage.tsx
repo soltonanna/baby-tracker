@@ -8,16 +8,24 @@ import { queryKeys } from '../../services/queryKeys.js';
 import { fetchBabies, fetchBabyEvents, fetchFamilies } from './api.js';
 import { BabySelector } from './BabySelector.js';
 import { EventList } from './EventList.js';
+import { FeedingForm } from './FeedingForm.js';
 import { NoteForm } from './NoteForm.js';
 
 /**
  * The daily tracker: pick a baby, see their recent events.
  *
- * Notes can be added; the other event types, editing and the "both babies"
- * action come later.
+ * Notes and feedings can be added; the remaining event types, editing and the
+ * "both babies" action come later.
  * The app is single-family for now, so the caller's first family is used
  * rather than asking them to choose one.
  */
+
+/**
+ * Which entry form is open, if any. One value rather than a flag per form: only
+ * one form is ever open, and a union says so instead of relying on every flag
+ * being cleared whenever another is set.
+ */
+type OpenForm = 'note' | 'feeding';
 export function TodayPage() {
   const { t } = useTranslation();
 
@@ -35,7 +43,7 @@ export function TodayPage() {
   const babies = babiesQuery.data;
 
   const [requestedBabyId, setRequestedBabyId] = useState<string | null>(null);
-  const [addingNote, setAddingNote] = useState(false);
+  const [openForm, setOpenForm] = useState<OpenForm | null>(null);
 
   // Derived rather than synchronised: the baby the parent tapped, as long as
   // they are still in the list, and otherwise the first one. That covers both
@@ -83,32 +91,54 @@ export function TodayPage() {
         selectedBabyId={selectedBabyId ?? ''}
         onSelect={(babyId) => {
           setRequestedBabyId(babyId);
-          // A half-written note belongs to the baby it was started for, so
+          // A half-written entry belongs to the baby it was started for, so
           // switching baby closes the form rather than re-aiming it.
-          setAddingNote(false);
+          setOpenForm(null);
         }}
       />
 
-      {addingNote && selectedBabyId !== null ? (
+      {openForm === 'feeding' && selectedBabyId !== null ? (
+        <FeedingForm
+          familyId={familyId}
+          babyId={selectedBabyId}
+          onSaved={() => {
+            setOpenForm(null);
+          }}
+          onCancel={() => {
+            setOpenForm(null);
+          }}
+        />
+      ) : openForm === 'note' && selectedBabyId !== null ? (
         <NoteForm
           familyId={familyId}
           babyId={selectedBabyId}
           onSaved={() => {
-            setAddingNote(false);
+            setOpenForm(null);
           }}
           onCancel={() => {
-            setAddingNote(false);
+            setOpenForm(null);
           }}
         />
       ) : (
-        <Button
-          fullWidth
-          onClick={() => {
-            setAddingNote(true);
-          }}
-        >
-          {t('today.addNote')}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            fullWidth
+            onClick={() => {
+              setOpenForm('feeding');
+            }}
+          >
+            {t('today.addFeeding')}
+          </Button>
+          <Button
+            fullWidth
+            variant="secondary"
+            onClick={() => {
+              setOpenForm('note');
+            }}
+          >
+            {t('today.addNote')}
+          </Button>
+        </div>
       )}
 
       <Card title={t('today.recentEvents')}>

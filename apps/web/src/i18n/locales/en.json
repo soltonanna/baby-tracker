@@ -61,6 +61,7 @@
     "loadFailed": "Could not load your family. Please try again.",
     "noFamily": "No family yet.",
     "noBabies": "No babies in this family yet.",
+    "addFeeding": "Add feeding",
     "addNote": "Add note",
     "recentEvents": "Recent events",
     "loadingEvents": "Loading events…",
@@ -71,6 +72,25 @@
       "SLEEP": "Sleep",
       "DIAPER": "Nappy",
       "NOTE": "Note"
+    },
+    "feeding": {
+      "title": "New feeding",
+      "time": "Time",
+      "amount": "Amount",
+      "unit": "Unit",
+      "units": {
+        "ml": "ml",
+        "oz": "oz"
+      },
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "requiredAmount": "Please enter an amount.",
+        "invalidAmount": "Please enter a valid amount.",
+        "invalidTime": "Please enter a valid time.",
+        "saveFailed": "Could not save the feeding. Please try again."
+      }
     },
     "note": {
       "title": "New note",
