@@ -14,8 +14,7 @@
     "apiOnline": "API is reachable",
     "apiOffline": "API is not reachable",
     "database": "Database",
-    "checking": "Checking…",
-    "noFeaturesYet": "The app is running and connected to its API. Tracking screens are not built yet."
+    "checking": "Checking…"
   },
   "placeholder": {
     "comingIn": "Arrives in {{phase}}"
@@ -55,6 +54,22 @@
       "tooManyAttempts": "Too many attempts. Please wait a little and try again.",
       "validationFailed": "Please check the fields below.",
       "unexpected": "Something went wrong. Please try again."
+    }
+  },
+  "today": {
+    "loading": "Loading…",
+    "loadFailed": "Could not load your family. Please try again.",
+    "noFamily": "No family yet.",
+    "noBabies": "No babies in this family yet.",
+    "recentEvents": "Recent events",
+    "loadingEvents": "Loading events…",
+    "eventsFailed": "Could not load events. Please try again.",
+    "noEvents": "Nothing recorded yet.",
+    "eventType": {
+      "FEEDING": "Feeding",
+      "SLEEP": "Sleep",
+      "DIAPER": "Nappy",
+      "NOTE": "Note"
     }
   }
 }

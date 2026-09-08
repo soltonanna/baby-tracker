@@ -222,8 +222,9 @@ false` plus a database-readiness guard in Phase 1B.
 - Type-aware ESLint rules are off deliberately — `tsc --noEmit` already catches
   type errors and type-aware linting roughly triples lint time.
 - No CI yet. `npm run verify` is the manual equivalent.
-- No component tests on the web app. Deferred until there is logic worth
-  testing (event forms, baby target picker) in Phase 2.
+- Component tests on the web app run in the `web-dom` Vitest project (jsdom,
+  `*.test.tsx`), added in Phase 2C.2. `web-unit` stays on the Node environment
+  for the plain-function tests, so only tests that render pay for a DOM.
 - `packages/shared` must be built before the API or web typecheck; the root
   scripts do this automatically, but a bare `npx vitest` in `apps/api` will not.
 

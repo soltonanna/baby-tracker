@@ -4,7 +4,7 @@ import { ProtectedRoute } from '../features/auth/ProtectedRoute.js';
 import { PublicOnlyRoute } from '../features/auth/PublicOnlyRoute.js';
 import { LoginPage } from '../features/auth/LoginPage.js';
 import { RegisterPage } from '../features/auth/RegisterPage.js';
-import { TodayPage } from '../features/system/TodayPage.js';
+import { TodayPage } from '../features/tracker/TodayPage.js';
 import { PlaceholderPage } from '../features/system/PlaceholderPage.js';
 import { NotFoundPage } from '../features/system/NotFoundPage.js';
 

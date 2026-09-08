@@ -1,14 +1,15 @@
 import { defineConfig } from 'vitest/config';
 
 /**
- * Three projects, so the fast feedback loop stays fast:
+ * Separate projects, so the fast feedback loop stays fast:
  *
  *   shared           pure functions, no I/O
  *   api-unit         everything that does not need a database (`*.test.ts`)
  *   api-integration  everything that does (`*.int.test.ts`)
  *   web-unit         browser-side logic that needs no DOM (`*.test.ts`)
+ *   web-dom          React components, in jsdom (`*.test.tsx`)
  *
- * `npm test` runs all three; `npm run test:unit` skips the database entirely.
+ * `npm test` runs all of them; `npm run test:unit` skips the database entirely.
  */
 export default defineConfig({
   test: {
@@ -33,13 +34,24 @@ export default defineConfig({
       },
       {
         test: {
-          // No jsdom and no component-testing libraries: the auth flows worth
-          // testing are the token lifecycle, the refresh policy and the guard
-          // rules, and all three are deliberately plain functions.
+          // Node, not jsdom: the logic tested here is the token lifecycle, the
+          // refresh policy and the guard rules, and all three are deliberately
+          // plain functions. Keeping them out of jsdom keeps them fast.
           name: 'web-unit',
           root: './apps/web',
           environment: 'node',
           include: ['src/**/*.test.ts'],
+        },
+      },
+      {
+        test: {
+          // Components, rendered. The `.tsx` suffix is the divide: a test that
+          // renders needs a DOM, and nothing else pays for one.
+          name: 'web-dom',
+          root: './apps/web',
+          environment: 'jsdom',
+          include: ['src/**/*.test.tsx'],
+          setupFiles: ['./src/test/setup-dom.ts'],
         },
       },
       {
