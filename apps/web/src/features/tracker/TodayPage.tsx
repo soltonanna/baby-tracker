@@ -7,6 +7,7 @@ import { Spinner } from '../../components/ui/Spinner.js';
 import { queryKeys } from '../../services/queryKeys.js';
 import { fetchBabies, fetchBabyEvents, fetchFamilies } from './api.js';
 import { BabySelector } from './BabySelector.js';
+import { CreateFamilyForm } from './CreateFamilyForm.js';
 import { EventList } from './EventList.js';
 import { DiaperForm } from './DiaperForm.js';
 import { FeedingForm } from './FeedingForm.js';
@@ -19,7 +20,8 @@ import { SleepForm } from './SleepForm.js';
  * Notes, feedings, sleeps and nappy changes can be added; the remaining event
  * types, editing and the "both babies" action come later.
  * The app is single-family for now, so the caller's first family is used
- * rather than asking them to choose one.
+ * rather than asking them to choose one, and an account with no family is
+ * offered the form to create one.
  */
 
 /**
@@ -74,8 +76,10 @@ export function TodayPage() {
     return <StatusCard>{t('today.loading')}</StatusCard>;
   }
 
+  // A signed-in account with no family yet: the one thing to do here is make
+  // one, so the screen offers it rather than reporting the absence.
   if (familyId === undefined) {
-    return <StatusCard>{t('today.noFamily')}</StatusCard>;
+    return <CreateFamilyForm />;
   }
 
   if (babiesQuery.isPending) {

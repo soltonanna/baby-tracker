@@ -59,7 +59,6 @@
   "today": {
     "loading": "Loading…",
     "loadFailed": "Could not load your family. Please try again.",
-    "noFamily": "No family yet.",
     "noBabies": "No babies in this family yet.",
     "addFeeding": "Add feeding",
     "addSleep": "Add sleep",
@@ -69,6 +68,18 @@
     "loadingEvents": "Loading events…",
     "eventsFailed": "Could not load events. Please try again.",
     "noEvents": "Nothing recorded yet.",
+    "family": {
+      "title": "Create your family",
+      "intro": "Babies, events and records all live in a family. Create yours to get started.",
+      "name": "Family name",
+      "submit": "Create family",
+      "submitting": "Creating…",
+      "errors": {
+        "required": "Please enter a family name.",
+        "tooLong": "That name is too long.",
+        "createFailed": "Could not create the family. Please try again."
+      }
+    },
     "eventType": {
       "FEEDING": "Feeding",
       "SLEEP": "Sleep",

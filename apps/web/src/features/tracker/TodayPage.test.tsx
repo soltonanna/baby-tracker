@@ -80,6 +80,8 @@ const never = (): Promise<Response> => new Promise<Response>(() => {});
 
 interface Routes {
   families?: () => Promise<Response>;
+  /** POST to the same path as `families`. */
+  createFamily?: () => Promise<Response>;
   babies?: () => Promise<Response>;
   events?: (babyId: string) => Promise<Response>;
   /** POST to the same path as `events`. */
@@ -114,6 +116,9 @@ function stubApi(routes: Routes): void {
     }
 
     if (url.endsWith('/families')) {
+      if (method === 'POST') {
+        return (routes.createFamily ?? (() => Promise.resolve(json({ family }, 201))))();
+      }
       return (routes.families ?? (() => Promise.resolve(json({ families: [family] }))))();
     }
 
@@ -130,6 +135,16 @@ const requestedEventBabyIds = (): string[] =>
     .map((call) => /\/babies\/([^/]+)\/events$/.exec(String(call[0])))
     .filter((match): match is RegExpExecArray => match !== null)
     .map((match) => match[1] ?? '');
+
+/** The bodies of the family creations made so far, parsed. */
+const createdFamilyBodies = (): unknown[] =>
+  fetchMock.mock.calls
+    .filter(
+      (call) =>
+        (call[1] as RequestInit | undefined)?.method === 'POST' &&
+        String(call[0]).endsWith('/families'),
+    )
+    .map((call) => JSON.parse(String((call[1] as RequestInit).body)) as unknown);
 
 /** The bodies of the event creations made so far, parsed. */
 const createdEventBodies = (): unknown[] =>
@@ -1145,5 +1160,131 @@ describe('adding a nappy', () => {
     const item = (await within(card).findAllByRole('listitem'))[0] as HTMLElement;
 
     expect(within(item).getByText('leaked everywhere')).toBeDefined();
+  });
+});
+
+describe('creating the first family', () => {
+  /** No family yet — the state a freshly registered account starts in. */
+  const noFamilies = () => Promise.resolve(json({ families: [] }));
+
+  /** Waits for the create form, and returns its name field. */
+  async function nameField(): Promise<HTMLInputElement> {
+    return (await screen.findByLabelText('Family name')) as HTMLInputElement;
+  }
+
+  it('offers a create-family form instead of a dead end', async () => {
+    stubApi({ families: noFamilies });
+    renderToday();
+
+    expect(await screen.findByRole('heading', { name: 'Create your family' })).toBeDefined();
+    expect((await nameField()).value).toBe('');
+    expect(screen.getByRole('button', { name: 'Create family' })).toBeDefined();
+    // Nothing baby-shaped is on screen yet: there is no family to hold one.
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add note' })).toBeNull();
+  });
+
+  it('requires a name before anything is sent', async () => {
+    stubApi({ families: noFamilies });
+    renderToday();
+
+    await nameField();
+    await userEvent.click(screen.getByRole('button', { name: 'Create family' }));
+
+    expect(await screen.findByText('Please enter a family name.')).toBeDefined();
+    expect(createdFamilyBodies()).toEqual([]);
+    // Still open, so the parent can simply type.
+    expect(screen.getByLabelText('Family name')).toBeDefined();
+  });
+
+  it('treats a name of only spaces as empty', async () => {
+    stubApi({ families: noFamilies });
+    renderToday();
+
+    await userEvent.type(await nameField(), '   ');
+    await userEvent.click(screen.getByRole('button', { name: 'Create family' }));
+
+    expect(await screen.findByText('Please enter a family name.')).toBeDefined();
+    expect(createdFamilyBodies()).toEqual([]);
+  });
+
+  it('rejects a name longer than the shared contract allows', async () => {
+    stubApi({ families: noFamilies });
+    renderToday();
+
+    // 81 characters: one past the shared `familyNameSchema` maximum, entered as
+    // a paste would be rather than one keystroke at a time.
+    fireEvent.change(await nameField(), { target: { value: 'a'.repeat(81) } });
+    await userEvent.click(screen.getByRole('button', { name: 'Create family' }));
+
+    expect(await screen.findByText('That name is too long.')).toBeDefined();
+    expect(createdFamilyBodies()).toEqual([]);
+  });
+
+  it('sends the trimmed name to the existing families endpoint', async () => {
+    stubApi({ families: noFamilies });
+    renderToday();
+
+    await userEvent.type(await nameField(), '  Sultanova  ');
+    await userEvent.click(screen.getByRole('button', { name: 'Create family' }));
+
+    await waitFor(() => {
+      expect(createdFamilyBodies()).toEqual([{ name: 'Sultanova' }]);
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(String(posted?.[0])).toContain('/families');
+  });
+
+  it('shows the tracker for the new family without a reload', async () => {
+    let created = false;
+
+    stubApi({
+      families: () => Promise.resolve(json({ families: created ? [family] : [] })),
+      createFamily: () => {
+        created = true;
+        return Promise.resolve(json({ family }, 201));
+      },
+    });
+    renderToday();
+
+    await userEvent.type(await nameField(), 'Sultanova');
+    await userEvent.click(screen.getByRole('button', { name: 'Create family' }));
+
+    // The families query is refetched, the babies of the new family load, and
+    // the form is gone — all without the page being reloaded.
+    expect(await screen.findByRole('tab', { name: 'Ani' })).toBeDefined();
+    expect(screen.queryByLabelText('Family name')).toBeNull();
+  });
+
+  it('reports a failed creation and keeps what was typed', async () => {
+    stubApi({
+      families: noFamilies,
+      createFamily: () => Promise.resolve(apiError(500, 'INTERNAL_ERROR')),
+    });
+    renderToday();
+
+    await userEvent.type(await nameField(), 'Sultanova');
+    await userEvent.click(screen.getByRole('button', { name: 'Create family' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Could not create the family. Please try again.',
+    );
+    expect((screen.getByLabelText('Family name') as HTMLInputElement).value).toBe('Sultanova');
+  });
+
+  it('disables the action while the family is being created', async () => {
+    stubApi({ families: noFamilies, createFamily: never });
+    renderToday();
+
+    await userEvent.type(await nameField(), 'Sultanova');
+    await userEvent.click(screen.getByRole('button', { name: 'Create family' }));
+
+    const submitting = await screen.findByRole('button', { name: 'Creating…' });
+    expect((submitting as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Family name') as HTMLInputElement).disabled).toBe(true);
   });
 });

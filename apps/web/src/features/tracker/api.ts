@@ -5,17 +5,30 @@ import type {
   BabyEventResponse,
   BabyEventType,
   BabyListResponse,
+  CreateFamilyInput,
   FamilyListResponse,
+  FamilyResponse,
   FamilyWithRole,
   IsoDateTime,
 } from '@baby-tracker/shared';
 import { apiFetch } from '../../services/apiClient.js';
 
-/** The Today screen's reads and its one write. Thin wrappers, like features/auth/api.ts. */
+/** The Today screen's reads and writes. Thin wrappers, like features/auth/api.ts. */
 
 export async function fetchFamilies(): Promise<FamilyWithRole[]> {
   const { families } = await apiFetch<FamilyListResponse>('/families');
   return families;
+}
+
+/**
+ * Creates the caller's family. The API makes them its OWNER; no role is sent.
+ */
+export async function createFamily(input: CreateFamilyInput): Promise<FamilyWithRole> {
+  const { family } = await apiFetch<FamilyResponse>('/families', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return family;
 }
 
 export async function fetchBabies(familyId: string): Promise<Baby[]> {
