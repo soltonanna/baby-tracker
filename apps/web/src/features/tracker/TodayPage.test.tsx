@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Baby, BabyEvent, FamilyWithRole } from '@baby-tracker/shared';
@@ -56,6 +56,13 @@ const aniEvents: BabyEvent[] = [
     endedAt: '2026-09-08T06:15:00.000Z',
   }),
 ];
+
+/** 23:00 to 01:00: one session that crosses midnight, per decision D5. */
+const overnightSleep: BabyEvent = event('event-ani-3', ANI_ID, {
+  type: 'SLEEP',
+  startedAt: '2026-09-08T23:00:00.000Z',
+  endedAt: '2026-09-09T01:00:00.000Z',
+});
 
 const nareEvents: BabyEvent[] = [event('event-nare-1', NARE_ID, { type: 'DIAPER' })];
 
@@ -130,12 +137,28 @@ const createdEventBodies = (): unknown[] =>
     .filter((call) => (call[1] as RequestInit | undefined)?.method === 'POST')
     .map((call) => JSON.parse(String((call[1] as RequestInit).body)) as unknown);
 
-/** The instant a `HH:MM` shown in an entry form stands for, in this machine's zone. */
-function startedAtFor(time: string): string {
+/**
+ * The instant a `HH:MM` shown in an entry form stands for, in this machine's zone.
+ * `dayOffset` moves it whole local days — 1 is the following day, which is where
+ * a sleep that crosses midnight ends.
+ */
+function startedAtFor(time: string, dayOffset = 0): string {
   const [hours, minutes] = time.split(':').map(Number);
   const date = new Date();
+  date.setDate(date.getDate() + dayOffset);
   date.setHours(hours ?? 0, minutes ?? 0, 0, 0);
   return date.toISOString();
+}
+
+/**
+ * Sets an `<input type="time">`.
+ *
+ * `userEvent.type` would enter a time one keystroke at a time, and every
+ * intermediate value is an invalid time that jsdom discards. A change event is
+ * what the browser itself dispatches once a time is picked.
+ */
+function setTime(input: HTMLInputElement, value: string): void {
+  fireEvent.change(input, { target: { value } });
 }
 
 function renderToday(): void {
@@ -225,6 +248,33 @@ describe('events', () => {
     const sleep = items[1] as HTMLElement;
     expect(within(sleep).getByText('Sleep')).toBeDefined();
     expect(within(sleep).queryByText(/ml/)).toBeNull();
+  });
+
+  it('renders a sleep event with the duration derived from its start and end', async () => {
+    stubApi({ events: () => Promise.resolve(json({ events: aniEvents })) });
+    renderToday();
+
+    const card = await eventsCard();
+    const items = await within(card).findAllByRole('listitem');
+
+    // 05:00 to 06:15 is an hour and a quarter, and the list says so rather than
+    // leaving the parent to subtract two times.
+    const sleep = items[1] as HTMLElement;
+    expect(within(sleep).getByText('Sleep')).toBeDefined();
+    expect(within(sleep).getByText('1h 15m')).toBeDefined();
+  });
+
+  it('renders the duration of a sleep that crossed midnight', async () => {
+    stubApi({ events: () => Promise.resolve(json({ events: [overnightSleep] })) });
+    renderToday();
+
+    const card = await eventsCard();
+    const item = (await within(card).findAllByRole('listitem'))[0] as HTMLElement;
+
+    // The two instants are two hours apart across a date boundary, and the
+    // duration is derived from them rather than from the clock times.
+    expect(within(item).getByText('Sleep')).toBeDefined();
+    expect(within(item).getByText('2h 0m')).toBeDefined();
   });
 
   it('loads the other baby’s events when the tab is switched', async () => {
@@ -636,6 +686,237 @@ describe('adding a feeding', () => {
 
     expect(screen.queryByLabelText('Amount')).toBeNull();
     expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
+  });
+});
+
+describe('adding a sleep', () => {
+  /** Opens the sleep form for the baby selected by default, and returns its fields. */
+  async function openSleepForm(): Promise<{ start: HTMLInputElement; end: HTMLInputElement }> {
+    await userEvent.click(await screen.findByRole('button', { name: 'Add sleep' }));
+
+    return {
+      start: await screen.findByLabelText('Start'),
+      end: screen.getByLabelText('End'),
+    };
+  }
+
+  it('opens the sleep form when the Add sleep action is used', async () => {
+    stubApi({});
+    renderToday();
+
+    // The action is offered next to the other two, and no form is open yet.
+    expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Add note' })).toBeDefined();
+    expect(screen.queryByLabelText('Start')).toBeNull();
+
+    const { start, end } = await openSleepForm();
+
+    expect(screen.getByRole('heading', { name: 'New sleep' })).toBeDefined();
+    // The start is defaulted to the current local time; the end is deliberately
+    // left for the parent, so a sleep is never saved with a made-up length.
+    expect(start.value).toMatch(/^\d{2}:\d{2}$/);
+    expect(end.value).toBe('');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined();
+    // The other forms are separate actions, not this one.
+    expect(screen.queryByLabelText('Note')).toBeNull();
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+  });
+
+  it('requires an end time before anything is sent', async () => {
+    stubApi({});
+    renderToday();
+
+    await openSleepForm();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Please enter an end time.')).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
+    // Still open, so the parent can simply fill it in.
+    expect(screen.getByLabelText('End')).toBeDefined();
+  });
+
+  it('rejects a cleared start time without sending anything', async () => {
+    stubApi({});
+    renderToday();
+
+    const { start, end } = await openSleepForm();
+    setTime(start, '');
+    setTime(end, '08:45');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Please enter a valid start time.')).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
+  });
+
+  it('reads an end earlier than the start as the next day', async () => {
+    stubApi({});
+    renderToday();
+
+    const { start, end } = await openSleepForm();
+    setTime(start, '23:00');
+    setTime(end, '01:00');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // One session crossing midnight (D5): the start stays on today, the end
+    // lands on tomorrow, and the two instants are two hours apart.
+    await waitFor(() => {
+      expect(createdEventBodies()).toEqual([
+        {
+          type: 'SLEEP',
+          startedAt: startedAtFor('23:00'),
+          endedAt: startedAtFor('01:00', 1),
+        },
+      ]);
+    });
+
+    const [body] = createdEventBodies() as { startedAt: string; endedAt: string }[];
+    expect(Date.parse(body?.endedAt ?? '') - Date.parse(body?.startedAt ?? '')).toBe(
+      2 * 60 * 60 * 1000,
+    );
+  });
+
+  it('keeps an ordinary evening sleep on the same day', async () => {
+    stubApi({});
+    renderToday();
+
+    const { start, end } = await openSleepForm();
+    setTime(start, '20:00');
+    setTime(end, '22:30');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // Nothing rolls over while the end is later than the start.
+    await waitFor(() => {
+      expect(createdEventBodies()).toEqual([
+        {
+          type: 'SLEEP',
+          startedAt: startedAtFor('20:00'),
+          endedAt: startedAtFor('22:30'),
+        },
+      ]);
+    });
+  });
+
+  it('sends a SLEEP event for the selected baby, with a start and an end', async () => {
+    stubApi({});
+    renderToday();
+
+    const { start, end } = await openSleepForm();
+    setTime(start, '07:30');
+    setTime(end, '08:45');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toEqual([
+        {
+          type: 'SLEEP',
+          startedAt: startedAtFor('07:30'),
+          endedAt: startedAtFor('08:45'),
+        },
+      ]);
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(String(posted?.[0])).toContain(`/families/${FAMILY_ID}/babies/${ANI_ID}/events`);
+  });
+
+  it('posts to the baby that is selected, not the first one', async () => {
+    stubApi({});
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'Nare' }));
+
+    const { start, end } = await openSleepForm();
+    setTime(start, '09:00');
+    setTime(end, '10:10');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toHaveLength(1);
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(String(posted?.[0])).toContain(`/families/${FAMILY_ID}/babies/${NARE_ID}/events`);
+  });
+
+  it('closes the form and reloads the events once the sleep is saved', async () => {
+    const sleep = event('event-sleep', ANI_ID, {
+      type: 'SLEEP',
+      startedAt: '2026-09-08T09:00:00.000Z',
+      endedAt: '2026-09-08T10:10:00.000Z',
+    });
+    let saved = false;
+
+    stubApi({
+      events: () => Promise.resolve(json({ events: saved ? [sleep] : [] })),
+      createEvent: (babyId) => {
+        saved = true;
+        return Promise.resolve(json({ event: event('event-sleep', babyId) }, 201));
+      },
+    });
+    renderToday();
+
+    const card = await eventsCard();
+    expect(await within(card).findByText('Nothing recorded yet.')).toBeDefined();
+
+    const { start, end } = await openSleepForm();
+    setTime(start, '09:00');
+    setTime(end, '10:10');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // The new sleep is on screen, with its duration, and the form is gone.
+    expect(await screen.findByText('1h 10m')).toBeDefined();
+    expect(screen.queryByLabelText('End')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add sleep' })).toBeDefined();
+    expect(requestedEventBabyIds()).toEqual([ANI_ID, ANI_ID]);
+  });
+
+  it('closes the form without sending anything when cancelled', async () => {
+    stubApi({});
+    renderToday();
+
+    const { end } = await openSleepForm();
+    setTime(end, '08:45');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByLabelText('End')).toBeNull();
+    expect(createdEventBodies()).toEqual([]);
+    expect(await screen.findByRole('button', { name: 'Add sleep' })).toBeDefined();
+  });
+
+  it('reports a failed save and keeps what was entered', async () => {
+    stubApi({ createEvent: () => Promise.resolve(apiError(500, 'INTERNAL_ERROR')) });
+    renderToday();
+
+    const { start, end } = await openSleepForm();
+    setTime(start, '07:30');
+    setTime(end, '08:45');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Could not save the sleep. Please try again.',
+    );
+    expect((screen.getByLabelText('Start') as HTMLInputElement).value).toBe('07:30');
+    expect((screen.getByLabelText('End') as HTMLInputElement).value).toBe('08:45');
+  });
+
+  it('closes an unfinished sleep form when the baby is switched', async () => {
+    stubApi({});
+    renderToday();
+
+    const { end } = await openSleepForm();
+    setTime(end, '08:45');
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Nare' }));
+
+    expect(screen.queryByLabelText('End')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add sleep' })).toBeDefined();
     expect(createdEventBodies()).toEqual([]);
   });
 });

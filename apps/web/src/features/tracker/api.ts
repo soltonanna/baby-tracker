@@ -39,6 +39,8 @@ export async function fetchBabyEvents(familyId: string, babyId: string): Promise
 export interface CreateBabyEventPayload {
   type: BabyEventType;
   startedAt: IsoDateTime;
+  /** Only for events that have a length, such as a sleep. */
+  endedAt?: IsoDateTime;
   amount?: number;
   unit?: string;
   details?: string;

@@ -62,6 +62,7 @@
     "noFamily": "No family yet.",
     "noBabies": "No babies in this family yet.",
     "addFeeding": "Add feeding",
+    "addSleep": "Add sleep",
     "addNote": "Add note",
     "recentEvents": "Recent events",
     "loadingEvents": "Loading events…",
@@ -90,6 +91,24 @@
         "invalidAmount": "Please enter a valid amount.",
         "invalidTime": "Please enter a valid time.",
         "saveFailed": "Could not save the feeding. Please try again."
+      }
+    },
+    "duration": {
+      "hoursMinutes": "{{hours}}h {{minutes}}m",
+      "minutes": "{{minutes}}m"
+    },
+    "sleep": {
+      "title": "New sleep",
+      "start": "Start",
+      "end": "End",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "invalidStartTime": "Please enter a valid start time.",
+        "requiredEndTime": "Please enter an end time.",
+        "invalidEndTime": "Please enter a valid end time.",
+        "saveFailed": "Could not save the sleep. Please try again."
       }
     },
     "note": {

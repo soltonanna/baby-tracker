@@ -10,12 +10,13 @@ import { BabySelector } from './BabySelector.js';
 import { EventList } from './EventList.js';
 import { FeedingForm } from './FeedingForm.js';
 import { NoteForm } from './NoteForm.js';
+import { SleepForm } from './SleepForm.js';
 
 /**
  * The daily tracker: pick a baby, see their recent events.
  *
- * Notes and feedings can be added; the remaining event types, editing and the
- * "both babies" action come later.
+ * Notes, feedings and sleeps can be added; the remaining event types, editing
+ * and the "both babies" action come later.
  * The app is single-family for now, so the caller's first family is used
  * rather than asking them to choose one.
  */
@@ -25,7 +26,7 @@ import { NoteForm } from './NoteForm.js';
  * one form is ever open, and a union says so instead of relying on every flag
  * being cleared whenever another is set.
  */
-type OpenForm = 'note' | 'feeding';
+type OpenForm = 'note' | 'feeding' | 'sleep';
 export function TodayPage() {
   const { t } = useTranslation();
 
@@ -108,6 +109,17 @@ export function TodayPage() {
             setOpenForm(null);
           }}
         />
+      ) : openForm === 'sleep' && selectedBabyId !== null ? (
+        <SleepForm
+          familyId={familyId}
+          babyId={selectedBabyId}
+          onSaved={() => {
+            setOpenForm(null);
+          }}
+          onCancel={() => {
+            setOpenForm(null);
+          }}
+        />
       ) : openForm === 'note' && selectedBabyId !== null ? (
         <NoteForm
           familyId={familyId}
@@ -120,9 +132,13 @@ export function TodayPage() {
           }}
         />
       ) : (
-        <div className="flex gap-2">
+        // A grid rather than a row: three actions of equal width, each still a
+        // full touch target, and a label that wraps rather than one that is cut
+        // off on the narrowest phone.
+        <div className="grid grid-cols-3 gap-2">
           <Button
             fullWidth
+            className="px-2"
             onClick={() => {
               setOpenForm('feeding');
             }}
@@ -132,6 +148,17 @@ export function TodayPage() {
           <Button
             fullWidth
             variant="secondary"
+            className="px-2"
+            onClick={() => {
+              setOpenForm('sleep');
+            }}
+          >
+            {t('today.addSleep')}
+          </Button>
+          <Button
+            fullWidth
+            variant="secondary"
+            className="px-2"
             onClick={() => {
               setOpenForm('note');
             }}
