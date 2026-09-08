@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { Spinner } from '../../components/ui/Spinner.js';
 import { queryKeys } from '../../services/queryKeys.js';
 import { fetchBabies, fetchBabyEvents, fetchFamilies } from './api.js';
 import { BabySelector } from './BabySelector.js';
 import { EventList } from './EventList.js';
+import { NoteForm } from './NoteForm.js';
 
 /**
  * The daily tracker: pick a baby, see their recent events.
  *
- * Reading only — creating, editing and the "both babies" action come later.
+ * Notes can be added; the other event types, editing and the "both babies"
+ * action come later.
  * The app is single-family for now, so the caller's first family is used
  * rather than asking them to choose one.
  */
@@ -32,6 +35,7 @@ export function TodayPage() {
   const babies = babiesQuery.data;
 
   const [requestedBabyId, setRequestedBabyId] = useState<string | null>(null);
+  const [addingNote, setAddingNote] = useState(false);
 
   // Derived rather than synchronised: the baby the parent tapped, as long as
   // they are still in the list, and otherwise the first one. That covers both
@@ -77,8 +81,35 @@ export function TodayPage() {
       <BabySelector
         babies={babies}
         selectedBabyId={selectedBabyId ?? ''}
-        onSelect={setRequestedBabyId}
+        onSelect={(babyId) => {
+          setRequestedBabyId(babyId);
+          // A half-written note belongs to the baby it was started for, so
+          // switching baby closes the form rather than re-aiming it.
+          setAddingNote(false);
+        }}
       />
+
+      {addingNote && selectedBabyId !== null ? (
+        <NoteForm
+          familyId={familyId}
+          babyId={selectedBabyId}
+          onSaved={() => {
+            setAddingNote(false);
+          }}
+          onCancel={() => {
+            setAddingNote(false);
+          }}
+        />
+      ) : (
+        <Button
+          fullWidth
+          onClick={() => {
+            setAddingNote(true);
+          }}
+        >
+          {t('today.addNote')}
+        </Button>
+      )}
 
       <Card title={t('today.recentEvents')}>
         {eventsQuery.isPending ? (

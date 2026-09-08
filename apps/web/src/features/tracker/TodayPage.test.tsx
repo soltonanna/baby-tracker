@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Baby, BabyEvent, FamilyWithRole } from '@baby-tracker/shared';
@@ -75,6 +75,8 @@ interface Routes {
   families?: () => Promise<Response>;
   babies?: () => Promise<Response>;
   events?: (babyId: string) => Promise<Response>;
+  /** POST to the same path as `events`. */
+  createEvent?: (babyId: string) => Promise<Response>;
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -84,12 +86,19 @@ let fetchMock: ReturnType<typeof vi.fn>;
  * TanStack Query happens to fire its requests in.
  */
 function stubApi(routes: Routes): void {
-  fetchMock = vi.fn((input: unknown) => {
+  fetchMock = vi.fn((input: unknown, init?: RequestInit) => {
     const url = String(input);
+    const method = init?.method ?? 'GET';
 
     const events = /\/families\/[^/]+\/babies\/([^/]+)\/events$/.exec(url);
     if (events) {
       const babyId = events[1] ?? '';
+      if (method === 'POST') {
+        return (
+          routes.createEvent ??
+          ((id: string) => Promise.resolve(json({ event: event('event-new', id) }, 201)))
+        )(babyId);
+      }
       return (routes.events ?? (() => Promise.resolve(json({ events: [] }))))(babyId);
     }
 
@@ -107,12 +116,19 @@ function stubApi(routes: Routes): void {
   vi.stubGlobal('fetch', fetchMock);
 }
 
-/** Events requested so far, in order, as baby ids. */
+/** Event *reads* so far, in order, as baby ids. */
 const requestedEventBabyIds = (): string[] =>
   fetchMock.mock.calls
+    .filter((call) => ((call[1] as RequestInit | undefined)?.method ?? 'GET') === 'GET')
     .map((call) => /\/babies\/([^/]+)\/events$/.exec(String(call[0])))
     .filter((match): match is RegExpExecArray => match !== null)
     .map((match) => match[1] ?? '');
+
+/** The bodies of the event creations made so far, parsed. */
+const createdEventBodies = (): unknown[] =>
+  fetchMock.mock.calls
+    .filter((call) => (call[1] as RequestInit | undefined)?.method === 'POST')
+    .map((call) => JSON.parse(String((call[1] as RequestInit).body)) as unknown);
 
 function renderToday(): void {
   const queryClient = new QueryClient({
@@ -269,5 +285,137 @@ describe('loading, empty and error states', () => {
 
     expect(await screen.findByText('Could not load your family. Please try again.')).toBeDefined();
     expect(screen.queryByRole('tab')).toBeNull();
+  });
+});
+
+describe('adding a note', () => {
+  /** The instant a `HH:MM` shown in the form stands for, in this machine's zone. */
+  function startedAtFor(time: string): string {
+    const [hours, minutes] = time.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours ?? 0, minutes ?? 0, 0, 0);
+    return date.toISOString();
+  }
+
+  /** Opens the note form for the baby selected by default, and returns its fields. */
+  async function openNoteForm(): Promise<{ time: HTMLInputElement; details: HTMLTextAreaElement }> {
+    await userEvent.click(await screen.findByRole('button', { name: 'Add note' }));
+
+    return {
+      time: await screen.findByLabelText('Time'),
+      details: screen.getByLabelText('Note'),
+    };
+  }
+
+  it('opens the note form when the Add note action is used', async () => {
+    stubApi({});
+    renderToday();
+
+    expect(screen.queryByLabelText('Note')).toBeNull();
+
+    const { time, details } = await openNoteForm();
+
+    expect(screen.getByRole('heading', { name: 'New note' })).toBeDefined();
+    // Defaulted to the current local time rather than left empty.
+    expect(time.value).toMatch(/^\d{2}:\d{2}$/);
+    expect(details.value).toBe('');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined();
+  });
+
+  it('requires note text before anything is sent', async () => {
+    stubApi({});
+    renderToday();
+
+    await openNoteForm();
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText('Please write a note.')).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
+    // Still open, so the parent can simply type.
+    expect(screen.getByLabelText('Note')).toBeDefined();
+  });
+
+  it('sends a NOTE event for the selected baby', async () => {
+    stubApi({});
+    renderToday();
+
+    const { time, details } = await openNoteForm();
+    const chosenTime = time.value;
+
+    await userEvent.type(details, 'Smiled at the window');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toEqual([
+        {
+          type: 'NOTE',
+          startedAt: startedAtFor(chosenTime),
+          details: 'Smiled at the window',
+        },
+      ]);
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(String(posted?.[0])).toContain(`/families/${FAMILY_ID}/babies/${ANI_ID}/events`);
+  });
+
+  it('closes the form and reloads the events once the note is saved', async () => {
+    const note = event('event-note', ANI_ID, { type: 'NOTE', details: 'Smiled at the window' });
+    let saved = false;
+
+    stubApi({
+      events: () => Promise.resolve(json({ events: saved ? [note] : [] })),
+      createEvent: (babyId) => {
+        saved = true;
+        return Promise.resolve(json({ event: event('event-note', babyId) }, 201));
+      },
+    });
+    renderToday();
+
+    const card = await eventsCard();
+    expect(await within(card).findByText('Nothing recorded yet.')).toBeDefined();
+
+    const { details } = await openNoteForm();
+    await userEvent.type(details, 'Smiled at the window');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // The new note is on screen, and the form is gone.
+    expect(await screen.findByText('Smiled at the window')).toBeDefined();
+    expect(screen.queryByLabelText('Note')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add note' })).toBeDefined();
+    expect(requestedEventBabyIds()).toEqual([ANI_ID, ANI_ID]);
+  });
+
+  it('closes the form without sending anything when cancelled', async () => {
+    stubApi({});
+    renderToday();
+
+    const { details } = await openNoteForm();
+    await userEvent.type(details, 'Never mind');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByLabelText('Note')).toBeNull();
+    expect(createdEventBodies()).toEqual([]);
+    expect(await screen.findByRole('button', { name: 'Add note' })).toBeDefined();
+  });
+
+  it('reports a failed save and keeps what was typed', async () => {
+    stubApi({ createEvent: () => Promise.resolve(apiError(500, 'INTERNAL_ERROR')) });
+    renderToday();
+
+    const { details } = await openNoteForm();
+    await userEvent.type(details, 'Smiled at the window');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Could not save the note. Please try again.',
+    );
+    expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe(
+      'Smiled at the window',
+    );
   });
 });
