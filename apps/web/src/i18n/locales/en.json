@@ -59,11 +59,11 @@
   "today": {
     "loading": "Loading…",
     "loadFailed": "Could not load your family. Please try again.",
-    "noBabies": "No babies in this family yet.",
     "addFeeding": "Add feeding",
     "addSleep": "Add sleep",
     "addDiaper": "Add nappy",
     "addNote": "Add note",
+    "addBaby": "Add baby",
     "recentEvents": "Recent events",
     "loadingEvents": "Loading events…",
     "eventsFailed": "Could not load events. Please try again.",
@@ -78,6 +78,27 @@
         "required": "Please enter a family name.",
         "tooLong": "That name is too long.",
         "createFailed": "Could not create the family. Please try again."
+      }
+    },
+    "baby": {
+      "title": "Add a baby",
+      "intro": "Add one baby at a time. Twins are two babies in the same family.",
+      "name": "Name",
+      "birthDate": "Birth date (optional)",
+      "gender": "Gender (optional)",
+      "genders": {
+        "unspecified": "Not specified",
+        "MALE": "Boy",
+        "FEMALE": "Girl"
+      },
+      "submit": "Add baby",
+      "submitting": "Adding…",
+      "cancel": "Cancel",
+      "errors": {
+        "required": "Please enter a name.",
+        "tooLong": "That name is too long.",
+        "invalidBirthDate": "Please enter a valid birth date.",
+        "createFailed": "Could not add the baby. Please try again."
       }
     },
     "eventType": {

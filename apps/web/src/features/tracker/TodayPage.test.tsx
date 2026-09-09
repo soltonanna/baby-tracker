@@ -83,6 +83,8 @@ interface Routes {
   /** POST to the same path as `families`. */
   createFamily?: () => Promise<Response>;
   babies?: () => Promise<Response>;
+  /** POST to the same path as `babies`. */
+  createBaby?: () => Promise<Response>;
   events?: (babyId: string) => Promise<Response>;
   /** POST to the same path as `events`. */
   createEvent?: (babyId: string) => Promise<Response>;
@@ -112,6 +114,11 @@ function stubApi(routes: Routes): void {
     }
 
     if (url.endsWith('/babies')) {
+      if (method === 'POST') {
+        return (
+          routes.createBaby ?? (() => Promise.resolve(json({ baby: baby('baby-new', 'Ani') }, 201)))
+        )();
+      }
       return (routes.babies ?? (() => Promise.resolve(json({ babies }))))();
     }
 
@@ -143,6 +150,16 @@ const createdFamilyBodies = (): unknown[] =>
       (call) =>
         (call[1] as RequestInit | undefined)?.method === 'POST' &&
         String(call[0]).endsWith('/families'),
+    )
+    .map((call) => JSON.parse(String((call[1] as RequestInit).body)) as unknown);
+
+/** The bodies of the baby creations made so far, parsed. */
+const createdBabyBodies = (): unknown[] =>
+  fetchMock.mock.calls
+    .filter(
+      (call) =>
+        (call[1] as RequestInit | undefined)?.method === 'POST' &&
+        String(call[0]).endsWith('/babies'),
     )
     .map((call) => JSON.parse(String((call[1] as RequestInit).body)) as unknown);
 
@@ -335,13 +352,6 @@ describe('loading, empty and error states', () => {
     const card = await eventsCard();
     expect(await within(card).findByText('Nothing recorded yet.')).toBeDefined();
     expect(within(card).queryByRole('listitem')).toBeNull();
-  });
-
-  it('shows an empty state when the family has no babies yet', async () => {
-    stubApi({ babies: () => Promise.resolve(json({ babies: [] })) });
-    renderToday();
-
-    expect(await screen.findByText('No babies in this family yet.')).toBeDefined();
   });
 
   it('shows an error state when the events request fails', async () => {
@@ -1286,5 +1296,240 @@ describe('creating the first family', () => {
     const submitting = await screen.findByRole('button', { name: 'Creating…' });
     expect((submitting as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText('Family name') as HTMLInputElement).disabled).toBe(true);
+  });
+});
+
+describe('adding a baby', () => {
+  /** A family that exists but holds no babies — where family creation leaves you. */
+  const noBabies = () => Promise.resolve(json({ babies: [] }));
+
+  /** Waits for the add-baby form, and returns its fields. */
+  async function babyFields(): Promise<{ name: HTMLInputElement; birthDate: HTMLInputElement }> {
+    return {
+      name: (await screen.findByLabelText('Name')) as HTMLInputElement,
+      birthDate: screen.getByLabelText('Birth date (optional)') as HTMLInputElement,
+    };
+  }
+
+  /** One of the three gender radios, by its translated label. */
+  const genderRadio = (label: string): HTMLInputElement =>
+    screen.getByRole('radio', { name: label }) as HTMLInputElement;
+
+  it('offers an add-baby form instead of a dead end', async () => {
+    stubApi({ babies: noBabies });
+    renderToday();
+
+    expect(await screen.findByRole('heading', { name: 'Add a baby' })).toBeDefined();
+
+    const { name, birthDate } = await babyFields();
+    expect(name.value).toBe('');
+    // Both optional fields start empty: nothing is recorded that was not entered.
+    expect(birthDate.value).toBe('');
+    expect(genderRadio('Not specified').checked).toBe(true);
+    expect(screen.getByRole('button', { name: 'Add baby' })).toBeDefined();
+    // Nothing to go back to, so no cancel and no tracker behind it.
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    expect(screen.queryByRole('tab')).toBeNull();
+  });
+
+  it('offers one form for both babies rather than a twin flow', async () => {
+    stubApi({ babies: noBabies });
+    renderToday();
+
+    await babyFields();
+
+    // Twins are two uses of this form (spec §6), not an action of their own.
+    expect(screen.queryByRole('button', { name: /twin/i })).toBeNull();
+    expect(screen.queryByLabelText(/twin/i)).toBeNull();
+  });
+
+  it('requires a name before anything is sent', async () => {
+    stubApi({ babies: noBabies });
+    renderToday();
+
+    await babyFields();
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    expect(await screen.findByText('Please enter a name.')).toBeDefined();
+    expect(createdBabyBodies()).toEqual([]);
+    // Still open, so the parent can simply type.
+    expect(screen.getByLabelText('Name')).toBeDefined();
+  });
+
+  it('treats a name of only spaces as empty', async () => {
+    stubApi({ babies: noBabies });
+    renderToday();
+
+    const { name } = await babyFields();
+    await userEvent.type(name, '   ');
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    expect(await screen.findByText('Please enter a name.')).toBeDefined();
+    expect(createdBabyBodies()).toEqual([]);
+  });
+
+  it('rejects a name longer than the shared contract allows', async () => {
+    stubApi({ babies: noBabies });
+    renderToday();
+
+    // 81 characters: one past the shared `babyNameSchema` maximum, entered as a
+    // paste would be rather than one keystroke at a time.
+    const { name } = await babyFields();
+    fireEvent.change(name, { target: { value: 'a'.repeat(81) } });
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    expect(await screen.findByText('That name is too long.')).toBeDefined();
+    expect(createdBabyBodies()).toEqual([]);
+  });
+
+  it('sends the trimmed name alone when the optional fields are left empty', async () => {
+    stubApi({ babies: noBabies });
+    renderToday();
+
+    const { name } = await babyFields();
+    await userEvent.type(name, '  Ani  ');
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    // No `birthDate` and no `gender` keys at all: absence is what the contract
+    // makes optional, not an empty value.
+    await waitFor(() => {
+      expect(createdBabyBodies()).toEqual([{ name: 'Ani' }]);
+    });
+
+    const posted = fetchMock.mock.calls.find(
+      (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(String(posted?.[0])).toContain(`/families/${FAMILY_ID}/babies`);
+  });
+
+  it('sends the birth date and the gender when they are given', async () => {
+    stubApi({ babies: noBabies });
+    renderToday();
+
+    const { name, birthDate } = await babyFields();
+    await userEvent.type(name, 'Nare');
+    fireEvent.change(birthDate, { target: { value: '2026-01-05' } });
+    await userEvent.click(genderRadio('Girl'));
+
+    expect(genderRadio('Girl').checked).toBe(true);
+    expect(genderRadio('Not specified').checked).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    // `FEMALE`, never "Girl": what is stored must not depend on the language
+    // the parent happened to be using.
+    await waitFor(() => {
+      expect(createdBabyBodies()).toEqual([
+        { name: 'Nare', birthDate: '2026-01-05T00:00:00.000Z', gender: 'FEMALE' },
+      ]);
+    });
+  });
+
+  it('shows the tracker for the new baby without a reload', async () => {
+    let created = false;
+
+    stubApi({
+      babies: () => Promise.resolve(json({ babies: created ? [baby(ANI_ID, 'Ani')] : [] })),
+      createBaby: () => {
+        created = true;
+        return Promise.resolve(json({ baby: baby(ANI_ID, 'Ani') }, 201));
+      },
+    });
+    renderToday();
+
+    const { name } = await babyFields();
+    await userEvent.type(name, 'Ani');
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    // The babies query is refetched, the tracker appears, and the form is gone
+    // — all without the page being reloaded.
+    expect(await screen.findByRole('tab', { name: 'Ani' })).toBeDefined();
+    expect(screen.queryByLabelText('Name')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+  });
+
+  it('adds the second twin through the same form, from the tracker', async () => {
+    let babyList: Baby[] = [baby(ANI_ID, 'Ani')];
+
+    stubApi({
+      babies: () => Promise.resolve(json({ babies: babyList })),
+      createBaby: () => {
+        babyList = [baby(ANI_ID, 'Ani'), baby(NARE_ID, 'Nare')];
+        return Promise.resolve(json({ baby: baby(NARE_ID, 'Nare') }, 201));
+      },
+    });
+    renderToday();
+
+    // One baby so far, and the tracker offers the same form to add another.
+    expect(await screen.findByRole('tab', { name: 'Ani' })).toBeDefined();
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    const { name } = await babyFields();
+    await userEvent.type(name, 'Nare');
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    // Two independent babies, one tab each — no twin flow and no twin payload.
+    const tabs = await screen.findAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Ani', 'Nare']);
+    expect(createdBabyBodies()).toEqual([{ name: 'Nare' }]);
+    expect(screen.queryByLabelText('Name')).toBeNull();
+  });
+
+  it('leaves the tracker untouched when the form is cancelled', async () => {
+    stubApi({});
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add baby' }));
+
+    const { name } = await babyFields();
+    await userEvent.type(name, 'Never mind');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByLabelText('Name')).toBeNull();
+    expect(createdBabyBodies()).toEqual([]);
+    expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+  });
+
+  it('reports a failed creation and keeps what was entered', async () => {
+    stubApi({
+      babies: noBabies,
+      createBaby: () => Promise.resolve(apiError(500, 'INTERNAL_ERROR')),
+    });
+    renderToday();
+
+    const { name, birthDate } = await babyFields();
+    await userEvent.type(name, 'Ani');
+    fireEvent.change(birthDate, { target: { value: '2026-01-05' } });
+    await userEvent.click(genderRadio('Boy'));
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Could not add the baby. Please try again.',
+    );
+    // Nothing is cleared: the parent retries rather than re-entering.
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Ani');
+    expect((screen.getByLabelText('Birth date (optional)') as HTMLInputElement).value).toBe(
+      '2026-01-05',
+    );
+    expect(genderRadio('Boy').checked).toBe(true);
+  });
+
+  it('disables the action while the baby is being created', async () => {
+    stubApi({ babies: noBabies, createBaby: never });
+    renderToday();
+
+    const { name } = await babyFields();
+    await userEvent.type(name, 'Ani');
+    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
+
+    const submitting = await screen.findByRole('button', { name: 'Adding…' });
+    expect((submitting as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Name') as HTMLInputElement).disabled).toBe(true);
+    // The whole gender group, disabled through its fieldset rather than radio
+    // by radio — asserted where the attribute actually is.
+    expect(
+      (screen.getByRole('group', { name: 'Gender (optional)' }) as HTMLFieldSetElement).disabled,
+    ).toBe(true);
   });
 });

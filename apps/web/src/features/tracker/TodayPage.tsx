@@ -6,6 +6,7 @@ import { Card } from '../../components/ui/Card.js';
 import { Spinner } from '../../components/ui/Spinner.js';
 import { queryKeys } from '../../services/queryKeys.js';
 import { fetchBabies, fetchBabyEvents, fetchFamilies } from './api.js';
+import { AddBabyForm } from './AddBabyForm.js';
 import { BabySelector } from './BabySelector.js';
 import { CreateFamilyForm } from './CreateFamilyForm.js';
 import { EventList } from './EventList.js';
@@ -20,16 +21,20 @@ import { SleepForm } from './SleepForm.js';
  * Notes, feedings, sleeps and nappy changes can be added; the remaining event
  * types, editing and the "both babies" action come later.
  * The app is single-family for now, so the caller's first family is used
- * rather than asking them to choose one, and an account with no family is
- * offered the form to create one.
+ * rather than asking them to choose one, and an account with no family — or a
+ * family with no babies — is offered the form that fills the gap.
  */
 
 /**
  * Which entry form is open, if any. One value rather than a flag per form: only
  * one form is ever open, and a union says so instead of relying on every flag
  * being cleared whenever another is set.
+ *
+ * `baby` is a member of the same union for that reason: adding a baby is not an
+ * event, but it is another form that must not be open beside one.
  */
-type OpenForm = 'note' | 'feeding' | 'sleep' | 'diaper';
+type OpenForm = 'note' | 'feeding' | 'sleep' | 'diaper' | 'baby';
+
 export function TodayPage() {
   const { t } = useTranslation();
 
@@ -86,8 +91,11 @@ export function TodayPage() {
     return <StatusCard>{t('today.loading')}</StatusCard>;
   }
 
+  // A family with no babies yet: the same reasoning as the family above — the
+  // one thing to do here is add one, so the screen offers it. No cancel: there
+  // is no tracker behind this form to go back to.
   if (!babies || babies.length === 0) {
-    return <StatusCard>{t('today.noBabies')}</StatusCard>;
+    return <AddBabyForm familyId={familyId} />;
   }
 
   return (
@@ -103,7 +111,19 @@ export function TodayPage() {
         }}
       />
 
-      {openForm === 'feeding' && selectedBabyId !== null ? (
+      {openForm === 'baby' ? (
+        // The same form as the empty state, reached from the tracker: this is
+        // how the second twin is added, with no separate twin flow.
+        <AddBabyForm
+          familyId={familyId}
+          onCreated={() => {
+            setOpenForm(null);
+          }}
+          onCancel={() => {
+            setOpenForm(null);
+          }}
+        />
+      ) : openForm === 'feeding' && selectedBabyId !== null ? (
         <FeedingForm
           familyId={familyId}
           babyId={selectedBabyId}
@@ -148,49 +168,68 @@ export function TodayPage() {
           }}
         />
       ) : (
-        // A grid rather than a row: four actions of equal width, each still a
-        // full touch target, and a label that wraps rather than one that is cut
-        // off on the narrowest phone. Two columns rather than four, because four
-        // labels of this length side by side are four columns of wrapped text.
-        <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-2">
+          {/*
+            A grid rather than a row: four actions of equal width, each still a
+            full touch target, and a label that wraps rather than one that is cut
+            off on the narrowest phone. Two columns rather than four, because four
+            labels of this length side by side are four columns of wrapped text.
+          */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              fullWidth
+              className="px-2"
+              onClick={() => {
+                setOpenForm('feeding');
+              }}
+            >
+              {t('today.addFeeding')}
+            </Button>
+            <Button
+              fullWidth
+              variant="secondary"
+              className="px-2"
+              onClick={() => {
+                setOpenForm('sleep');
+              }}
+            >
+              {t('today.addSleep')}
+            </Button>
+            <Button
+              fullWidth
+              variant="secondary"
+              className="px-2"
+              onClick={() => {
+                setOpenForm('diaper');
+              }}
+            >
+              {t('today.addDiaper')}
+            </Button>
+            <Button
+              fullWidth
+              variant="secondary"
+              className="px-2"
+              onClick={() => {
+                setOpenForm('note');
+              }}
+            >
+              {t('today.addNote')}
+            </Button>
+          </div>
+
+          {/*
+            Adding a baby happens twice in the life of a family and a feeding
+            happens eight times a day, so it is quiet and below the four daily
+            actions rather than a fifth cell competing with them.
+          */}
           <Button
             fullWidth
-            className="px-2"
+            variant="quiet"
             onClick={() => {
-              setOpenForm('feeding');
+              setOpenForm('baby');
             }}
           >
-            {t('today.addFeeding')}
-          </Button>
-          <Button
-            fullWidth
-            variant="secondary"
-            className="px-2"
-            onClick={() => {
-              setOpenForm('sleep');
-            }}
-          >
-            {t('today.addSleep')}
-          </Button>
-          <Button
-            fullWidth
-            variant="secondary"
-            className="px-2"
-            onClick={() => {
-              setOpenForm('diaper');
-            }}
-          >
-            {t('today.addDiaper')}
-          </Button>
-          <Button
-            fullWidth
-            variant="secondary"
-            className="px-2"
-            onClick={() => {
-              setOpenForm('note');
-            }}
-          >
-            {t('today.addNote')}
+            {t('today.addBaby')}
           </Button>
         </div>
       )}

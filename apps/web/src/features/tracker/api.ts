@@ -5,6 +5,8 @@ import type {
   BabyEventResponse,
   BabyEventType,
   BabyListResponse,
+  BabyResponse,
+  CreateBabyInput,
   CreateFamilyInput,
   FamilyListResponse,
   FamilyResponse,
@@ -29,6 +31,20 @@ export async function createFamily(input: CreateFamilyInput): Promise<FamilyWith
     body: JSON.stringify(input),
   });
   return family;
+}
+
+/**
+ * Adds a baby to one of the caller's families.
+ *
+ * The family comes from the path, never from the body: the API resolves it
+ * through the caller's membership and ignores anything the client claims.
+ */
+export async function createBaby(familyId: string, input: CreateBabyInput): Promise<Baby> {
+  const { baby } = await apiFetch<BabyResponse>(`/families/${familyId}/babies`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return baby;
 }
 
 export async function fetchBabies(familyId: string): Promise<Baby[]> {
