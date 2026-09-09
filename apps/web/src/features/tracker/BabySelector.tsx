@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { Baby } from '@baby-tracker/shared';
 
 export interface BabySelectorProps {
@@ -11,8 +12,10 @@ export interface BabySelectorProps {
  * one baby renders one button, three render three.
  */
 export function BabySelector({ babies, selectedBabyId, onSelect }: BabySelectorProps) {
+  const { t } = useTranslation();
+
   return (
-    <div role="tablist" aria-label="Babies" className="flex gap-2">
+    <div role="tablist" aria-label={t('today.babies')} className="flex gap-2">
       {babies.map((baby) => {
         const selected = baby.id === selectedBabyId;
         return (

@@ -1,7 +1,12 @@
-import { Types } from 'mongoose';
-import type { BabyEvent as BabyEventDto, CreateBabyEventInput } from '@baby-tracker/shared';
-import { BabyEvent } from '../../models/BabyEvent.js';
-import { notFound } from '../../lib/httpError.js';
+import { Types, type QueryFilter } from 'mongoose';
+import {
+  babyEventFieldsSchemaFor,
+  type BabyEvent as BabyEventDto,
+  type CreateBabyEventInput,
+  type UpdateBabyEventInput,
+} from '@baby-tracker/shared';
+import { BabyEvent, type BabyEventAttributes } from '../../models/BabyEvent.js';
+import { notFound, unprocessable } from '../../lib/httpError.js';
 import type { FamilyScope } from '../../middleware/familyAccess.js';
 import type { BabyScope } from '../../middleware/babyAccess.js';
 import { toBabyEvent } from './mappers.js';
@@ -15,6 +20,25 @@ import { toBabyEvent } from './mappers.js';
  * check has not already established, and costs nothing; it means each query is
  * safe read on its own, without having to trace back to the middleware.
  */
+
+/**
+ * The filter every single-event operation uses — read, edit and delete alike.
+ *
+ * A malformed id throws the same 404 as a missing one, so an event id can be
+ * probed for neither existence nor ownership: another family's event, another
+ * baby's event and a typo are one answer (ARCHITECTURE_PROPOSAL.md §4.3).
+ */
+function scopedEventFilter(
+  family: FamilyScope,
+  baby: BabyScope,
+  eventId: string,
+): QueryFilter<BabyEventAttributes> {
+  if (!Types.ObjectId.isValid(eventId)) {
+    throw notFound('Event not found');
+  }
+
+  return { _id: eventId, familyId: family.familyId, babyId: baby.babyId };
+}
 
 export async function createEvent(
   family: FamilyScope,
@@ -57,18 +81,90 @@ export async function getEvent(
   baby: BabyScope,
   eventId: string,
 ): Promise<BabyEventDto> {
-  if (!Types.ObjectId.isValid(eventId)) {
-    throw notFound('Event not found');
-  }
-
-  const event = await BabyEvent.findOne({
-    _id: eventId,
-    familyId: family.familyId,
-    babyId: baby.babyId,
-  });
+  const event = await BabyEvent.findOne(scopedEventFilter(family, baby, eventId));
   if (!event) {
     throw notFound('Event not found');
   }
 
   return toBabyEvent(event);
+}
+
+/**
+ * Edits one event in place.
+ *
+ * Only the fields present in the patch are touched; an absent field is left
+ * exactly as it was, and `createdAt` and `updatedAt` are left to Mongoose, so an
+ * edit never silently rewrites anything the parent did not send.
+ *
+ * Nothing here converts a value. Storage stays canonical (decision D3): the
+ * client sends millilitres and millilitres are what is stored, the same
+ * contract create has. And nothing here reinterprets a time: an end earlier than
+ * a start is resolved to the following local day at the UI boundary, where the
+ * family's calendar is known (decision D5, `apps/web/.../eventTime.ts`), so the
+ * API sees two absolute instants and stores them as given.
+ */
+export async function updateEvent(
+  family: FamilyScope,
+  baby: BabyScope,
+  eventId: string,
+  input: UpdateBabyEventInput,
+): Promise<BabyEventDto> {
+  const event = await BabyEvent.findOne(scopedEventFilter(family, baby, eventId));
+  if (!event) {
+    throw notFound('Event not found');
+  }
+
+  // The stored type is the authority. A client may send it back unchanged,
+  // because an edit form round-trips the whole event, but changing what an event
+  // *is* would mean re-reading every one of its fields under different rules —
+  // a different operation from editing one, and not one the product asks for.
+  if (input.type !== undefined && input.type !== event.type) {
+    throw unprocessable('An event’s type cannot be changed');
+  }
+
+  // Checked here rather than in `validate()` because the type these rules hang
+  // off comes from the database, not from the request: a DIAPER stays a DIAPER
+  // with a canonical kind in `details`, whatever the body claims to be.
+  babyEventFieldsSchemaFor(event.type).parse(input);
+
+  if (input.startedAt !== undefined) {
+    event.startedAt = input.startedAt;
+  }
+  if (input.endedAt !== undefined) {
+    event.endedAt = input.endedAt;
+  }
+  if (input.amount !== undefined) {
+    event.amount = input.amount;
+  }
+  if (input.unit !== undefined) {
+    event.unit = input.unit;
+  }
+  if (input.details !== undefined) {
+    event.details = input.details;
+  }
+
+  await event.save();
+
+  return toBabyEvent(event);
+}
+
+/**
+ * Removes one event, and only one: the filter is the same family/baby/id triple
+ * every other single-event operation uses, so a delete can no more reach across
+ * a family or a sibling than a read can.
+ *
+ * A hard delete, deliberately. `ARCHITECTURE_PROPOSAL.md` §4.5 wants soft delete
+ * on baby-owned records eventually; that is a field on the model, an exclusion
+ * in every query and a restore path, and it is worth doing as its own change
+ * rather than as a side effect of the first delete endpoint.
+ */
+export async function deleteEvent(
+  family: FamilyScope,
+  baby: BabyScope,
+  eventId: string,
+): Promise<void> {
+  const { deletedCount } = await BabyEvent.deleteOne(scopedEventFilter(family, baby, eventId));
+  if (deletedCount === 0) {
+    throw notFound('Event not found');
+  }
 }

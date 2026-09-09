@@ -1,12 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { DIAPER_KINDS, type DiaperKind } from '@baby-tracker/shared';
+import { DIAPER_KINDS, type BabyEvent, type DiaperKind } from '@baby-tracker/shared';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { TextField } from '../../components/ui/TextField.js';
 import { queryKeys } from '../../services/queryKeys.js';
-import { createBabyEvent } from './api.js';
+import { saveBabyEvent } from './api.js';
 import { startedAtFrom, timeInputValue } from './eventTime.js';
 
 /**
@@ -30,29 +30,47 @@ import { startedAtFrom, timeInputValue } from './eventTime.js';
  * difference between two taps and three at 3am, and — unlike the sleep form's
  * end time, which is deliberately left empty — the chosen kind is visible on
  * screen the whole time, so a default here cannot be saved unnoticed.
+ *
+ * With an `event`, the same form edits it: the stored kind is the one selected,
+ * and submitting sends the canonical token again through a PATCH. A stored
+ * `details` that is not one of the four — create still accepts free text — falls
+ * back to the same default a new entry gets, because the four radios are all
+ * this form can represent.
  */
+
+/** The stored kind, when it is one of the four; the common one otherwise. */
+const diaperKindOf = (details: string | undefined): DiaperKind =>
+  details !== undefined && (DIAPER_KINDS as readonly string[]).includes(details)
+    ? (details as DiaperKind)
+    : 'wet';
 
 export interface DiaperFormProps {
   familyId: string;
   babyId: string;
+  /** The nappy change being edited, if this is an edit rather than a new entry. */
+  event?: BabyEvent | undefined;
   /** Called once the nappy change is saved and the event list has been refreshed. */
   onSaved: () => void;
   onCancel: () => void;
 }
 
-export function DiaperForm({ familyId, babyId, onSaved, onCancel }: DiaperFormProps) {
+export function DiaperForm({ familyId, babyId, event, onSaved, onCancel }: DiaperFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
+  const editing = event !== undefined;
+
   // Defaulted once, on mount: the clock must not move under the parent while
-  // they are choosing.
-  const [time, setTime] = useState(() => timeInputValue(new Date()));
-  const [kind, setKind] = useState<DiaperKind>('wet');
+  // they are choosing. An edit starts from the stored values instead.
+  const [time, setTime] = useState(() =>
+    timeInputValue(event === undefined ? new Date() : new Date(event.startedAt)),
+  );
+  const [kind, setKind] = useState<DiaperKind>(() => diaperKindOf(event?.details));
   const [timeError, setTimeError] = useState<string | undefined>(undefined);
 
   const save = useMutation({
     mutationFn: (payload: { startedAt: string; kind: DiaperKind }) =>
-      createBabyEvent(familyId, babyId, {
+      saveBabyEvent(familyId, babyId, event?.id, {
         type: 'DIAPER',
         startedAt: payload.startedAt,
         details: payload.kind,
@@ -67,10 +85,13 @@ export function DiaperForm({ familyId, babyId, onSaved, onCancel }: DiaperFormPr
     },
   });
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
+  function handleSubmit(formEvent: FormEvent<HTMLFormElement>): void {
+    formEvent.preventDefault();
 
-    const startedAt = startedAtFrom(time, new Date());
+    // An edit keeps the day the change was recorded on; only its clock time is
+    // being changed here.
+    const day = event === undefined ? new Date() : new Date(event.startedAt);
+    const startedAt = startedAtFrom(time, day);
     setTimeError(startedAt === null ? t('today.diaper.errors.invalidTime') : undefined);
 
     // The kind needs no validation: it is one of a fixed set and one of them is
@@ -83,11 +104,11 @@ export function DiaperForm({ familyId, babyId, onSaved, onCancel }: DiaperFormPr
   }
 
   return (
-    <Card title={t('today.diaper.title')}>
+    <Card title={editing ? t('today.diaper.editTitle') : t('today.diaper.title')}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {save.isError ? (
           <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
-            {t('today.diaper.errors.saveFailed')}
+            {editing ? t('today.diaper.errors.updateFailed') : t('today.diaper.errors.saveFailed')}
           </p>
         ) : null}
 
@@ -96,8 +117,8 @@ export function DiaperForm({ familyId, babyId, onSaved, onCancel }: DiaperFormPr
           type="time"
           name="startedAt"
           value={time}
-          onChange={(event) => {
-            setTime(event.target.value);
+          onChange={(changeEvent) => {
+            setTime(changeEvent.target.value);
           }}
           error={timeError}
           disabled={save.isPending}

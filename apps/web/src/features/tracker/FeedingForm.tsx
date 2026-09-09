@@ -6,13 +6,14 @@ import {
   VOLUME_UNITS,
   createBabyEventSchema,
   volumeToMl,
+  type BabyEvent,
   type VolumeUnit,
 } from '@baby-tracker/shared';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { TextField } from '../../components/ui/TextField.js';
 import { queryKeys } from '../../services/queryKeys.js';
-import { createBabyEvent } from './api.js';
+import { saveBabyEvent } from './api.js';
 import { startedAtFrom, timeInputValue } from './eventTime.js';
 
 /**
@@ -32,6 +33,13 @@ import { startedAtFrom, timeInputValue } from './eventTime.js';
  *
  * The unit select is a per-entry choice, not a stored preference; the settings
  * that make it sticky are a later phase.
+ *
+ * With an `event`, the same form edits it instead of creating one: the fields
+ * start from what was stored and submitting sends a PATCH. Editing shows the
+ * stored value in millilitres, because that is what is stored — converting it
+ * back into whichever unit it was typed in would be a guess, and D3 already
+ * says ml is the canonical form. The parent can still switch to ounces and type
+ * an amount there; the same conversion runs on the way out.
  */
 
 /** `z.number().nonnegative()`, straight from the schema the API validates with. */
@@ -40,25 +48,38 @@ const amountSchema = createBabyEventSchema.shape.amount.unwrap();
 /** What every volume is stored in, whatever the parent typed it in (D3). */
 const CANONICAL_VOLUME_UNIT: VolumeUnit = 'ml';
 
+/** The stored unit, when it is one this form can show; the default otherwise. */
+const volumeUnitOf = (unit: string | undefined): VolumeUnit =>
+  unit !== undefined && (VOLUME_UNITS as readonly string[]).includes(unit)
+    ? (unit as VolumeUnit)
+    : DEFAULT_UNITS.volume;
+
 export interface FeedingFormProps {
   familyId: string;
   babyId: string;
+  /** The feeding being edited, if this is an edit rather than a new entry. */
+  event?: BabyEvent | undefined;
   /** Called once the feeding is saved and the event list has been refreshed. */
   onSaved: () => void;
   onCancel: () => void;
 }
 
-export function FeedingForm({ familyId, babyId, onSaved, onCancel }: FeedingFormProps) {
+export function FeedingForm({ familyId, babyId, event, onSaved, onCancel }: FeedingFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   const unitId = useId();
+  const editing = event !== undefined;
 
   // Defaulted once, on mount: the clock must not move under the parent while
-  // they are typing.
-  const [time, setTime] = useState(() => timeInputValue(new Date()));
-  const [amount, setAmount] = useState('');
-  const [unit, setUnit] = useState<VolumeUnit>(DEFAULT_UNITS.volume);
+  // they are typing. An edit starts from the stored values instead.
+  const [time, setTime] = useState(() =>
+    timeInputValue(event === undefined ? new Date() : new Date(event.startedAt)),
+  );
+  const [amount, setAmount] = useState(() =>
+    event?.amount === undefined ? '' : String(event.amount),
+  );
+  const [unit, setUnit] = useState<VolumeUnit>(() => volumeUnitOf(event?.unit));
   const [timeError, setTimeError] = useState<string | undefined>(undefined);
   const [amountError, setAmountError] = useState<string | undefined>(undefined);
 
@@ -66,7 +87,7 @@ export function FeedingForm({ familyId, babyId, onSaved, onCancel }: FeedingForm
     // `amountMl` is already canonical: the conversion happens in the submit
     // handler, so the mutation has one unit and no unit to decide about.
     mutationFn: (payload: { startedAt: string; amountMl: number }) =>
-      createBabyEvent(familyId, babyId, {
+      saveBabyEvent(familyId, babyId, event?.id, {
         type: 'FEEDING',
         startedAt: payload.startedAt,
         amount: payload.amountMl,
@@ -82,10 +103,13 @@ export function FeedingForm({ familyId, babyId, onSaved, onCancel }: FeedingForm
     },
   });
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
+  function handleSubmit(formEvent: FormEvent<HTMLFormElement>): void {
+    formEvent.preventDefault();
 
-    const startedAt = startedAtFrom(time, new Date());
+    // An edit keeps the day the feeding was recorded on; only its clock time is
+    // being changed here.
+    const day = event === undefined ? new Date() : new Date(event.startedAt);
+    const startedAt = startedAtFrom(time, day);
     const trimmedAmount = amount.trim();
     // `Number('')` is 0, so emptiness is answered before the schema is asked.
     const parsedAmount =
@@ -109,11 +133,13 @@ export function FeedingForm({ familyId, babyId, onSaved, onCancel }: FeedingForm
   }
 
   return (
-    <Card title={t('today.feeding.title')}>
+    <Card title={editing ? t('today.feeding.editTitle') : t('today.feeding.title')}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {save.isError ? (
           <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
-            {t('today.feeding.errors.saveFailed')}
+            {editing
+              ? t('today.feeding.errors.updateFailed')
+              : t('today.feeding.errors.saveFailed')}
           </p>
         ) : null}
 
@@ -122,8 +148,8 @@ export function FeedingForm({ familyId, babyId, onSaved, onCancel }: FeedingForm
           type="time"
           name="startedAt"
           value={time}
-          onChange={(event) => {
-            setTime(event.target.value);
+          onChange={(changeEvent) => {
+            setTime(changeEvent.target.value);
           }}
           error={timeError}
           disabled={save.isPending}
@@ -140,8 +166,8 @@ export function FeedingForm({ familyId, babyId, onSaved, onCancel }: FeedingForm
               step="any"
               min={0}
               value={amount}
-              onChange={(event) => {
-                setAmount(event.target.value);
+              onChange={(changeEvent) => {
+                setAmount(changeEvent.target.value);
               }}
               error={amountError}
               disabled={save.isPending}
@@ -157,8 +183,8 @@ export function FeedingForm({ familyId, babyId, onSaved, onCancel }: FeedingForm
               id={unitId}
               name="unit"
               value={unit}
-              onChange={(event) => {
-                setUnit(event.target.value as VolumeUnit);
+              onChange={(changeEvent) => {
+                setUnit(changeEvent.target.value as VolumeUnit);
               }}
               disabled={save.isPending}
               className={[

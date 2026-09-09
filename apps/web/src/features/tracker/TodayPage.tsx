@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import type { BabyEvent, BabyEventType } from '@baby-tracker/shared';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { Spinner } from '../../components/ui/Spinner.js';
@@ -18,8 +19,8 @@ import { SleepForm } from './SleepForm.js';
 /**
  * The daily tracker: pick a baby, see their recent events.
  *
- * Notes, feedings, sleeps and nappy changes can be added; the remaining event
- * types, editing and the "both babies" action come later.
+ * Notes, feedings, sleeps and nappy changes can be added, edited and deleted;
+ * the remaining event types and the "both babies" action come later.
  * The app is single-family for now, so the caller's first family is used
  * rather than asking them to choose one, and an account with no family — or a
  * family with no babies — is offered the form that fills the gap.
@@ -32,8 +33,29 @@ import { SleepForm } from './SleepForm.js';
  *
  * `baby` is a member of the same union for that reason: adding a baby is not an
  * event, but it is another form that must not be open beside one.
+ *
+ * An event form carries the event it is editing, when there is one. Kept in the
+ * same value rather than in a second piece of state, because the two always
+ * change together: opening a form for a different event, or for none, is one
+ * decision and one update.
  */
-type OpenForm = 'note' | 'feeding' | 'sleep' | 'diaper' | 'baby';
+type EventFormKind = 'note' | 'feeding' | 'sleep' | 'diaper';
+
+type OpenForm = { kind: 'baby' } | { kind: EventFormKind; event?: BabyEvent };
+
+/**
+ * Which form edits which kind of event.
+ *
+ * Each form is also keyed by the event it is editing, so opening one on a
+ * different entry — or on a new one — remounts it and its fields start from that
+ * entry's values rather than from whatever the previous one left behind.
+ */
+const FORM_FOR_EVENT: Record<BabyEventType, EventFormKind> = {
+  FEEDING: 'feeding',
+  SLEEP: 'sleep',
+  DIAPER: 'diaper',
+  NOTE: 'note',
+};
 
 export function TodayPage() {
   const { t } = useTranslation();
@@ -111,7 +133,7 @@ export function TodayPage() {
         }}
       />
 
-      {openForm === 'baby' ? (
+      {openForm?.kind === 'baby' ? (
         // The same form as the empty state, reached from the tracker: this is
         // how the second twin is added, with no separate twin flow.
         <AddBabyForm
@@ -123,10 +145,12 @@ export function TodayPage() {
             setOpenForm(null);
           }}
         />
-      ) : openForm === 'feeding' && selectedBabyId !== null ? (
+      ) : openForm?.kind === 'feeding' && selectedBabyId !== null ? (
         <FeedingForm
+          key={openForm.event?.id ?? 'new'}
           familyId={familyId}
           babyId={selectedBabyId}
+          event={openForm.event}
           onSaved={() => {
             setOpenForm(null);
           }}
@@ -134,10 +158,12 @@ export function TodayPage() {
             setOpenForm(null);
           }}
         />
-      ) : openForm === 'sleep' && selectedBabyId !== null ? (
+      ) : openForm?.kind === 'sleep' && selectedBabyId !== null ? (
         <SleepForm
+          key={openForm.event?.id ?? 'new'}
           familyId={familyId}
           babyId={selectedBabyId}
+          event={openForm.event}
           onSaved={() => {
             setOpenForm(null);
           }}
@@ -145,10 +171,12 @@ export function TodayPage() {
             setOpenForm(null);
           }}
         />
-      ) : openForm === 'diaper' && selectedBabyId !== null ? (
+      ) : openForm?.kind === 'diaper' && selectedBabyId !== null ? (
         <DiaperForm
+          key={openForm.event?.id ?? 'new'}
           familyId={familyId}
           babyId={selectedBabyId}
+          event={openForm.event}
           onSaved={() => {
             setOpenForm(null);
           }}
@@ -156,10 +184,12 @@ export function TodayPage() {
             setOpenForm(null);
           }}
         />
-      ) : openForm === 'note' && selectedBabyId !== null ? (
+      ) : openForm?.kind === 'note' && selectedBabyId !== null ? (
         <NoteForm
+          key={openForm.event?.id ?? 'new'}
           familyId={familyId}
           babyId={selectedBabyId}
+          event={openForm.event}
           onSaved={() => {
             setOpenForm(null);
           }}
@@ -180,7 +210,7 @@ export function TodayPage() {
               fullWidth
               className="px-2"
               onClick={() => {
-                setOpenForm('feeding');
+                setOpenForm({ kind: 'feeding' });
               }}
             >
               {t('today.addFeeding')}
@@ -190,7 +220,7 @@ export function TodayPage() {
               variant="secondary"
               className="px-2"
               onClick={() => {
-                setOpenForm('sleep');
+                setOpenForm({ kind: 'sleep' });
               }}
             >
               {t('today.addSleep')}
@@ -200,7 +230,7 @@ export function TodayPage() {
               variant="secondary"
               className="px-2"
               onClick={() => {
-                setOpenForm('diaper');
+                setOpenForm({ kind: 'diaper' });
               }}
             >
               {t('today.addDiaper')}
@@ -210,7 +240,7 @@ export function TodayPage() {
               variant="secondary"
               className="px-2"
               onClick={() => {
-                setOpenForm('note');
+                setOpenForm({ kind: 'note' });
               }}
             >
               {t('today.addNote')}
@@ -226,7 +256,7 @@ export function TodayPage() {
             fullWidth
             variant="quiet"
             onClick={() => {
-              setOpenForm('baby');
+              setOpenForm({ kind: 'baby' });
             }}
           >
             {t('today.addBaby')}
@@ -244,7 +274,14 @@ export function TodayPage() {
         ) : eventsQuery.data.length === 0 ? (
           <p className="text-muted">{t('today.noEvents')}</p>
         ) : (
-          <EventList events={eventsQuery.data} />
+          <EventList
+            events={eventsQuery.data}
+            familyId={familyId}
+            babyId={selectedBabyId ?? ''}
+            onEdit={(event) => {
+              setOpenForm({ kind: FORM_FOR_EVENT[event.type], event });
+            }}
+          />
         )}
       </Card>
     </div>

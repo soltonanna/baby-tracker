@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import type { BabyEvent } from '@baby-tracker/shared';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { TextField } from '../../components/ui/TextField.js';
 import { queryKeys } from '../../services/queryKeys.js';
-import { createBabyEvent } from './api.js';
+import { saveBabyEvent } from './api.js';
 import { endedAtFrom, startedAtFrom, timeInputValue } from './eventTime.js';
 
 /**
@@ -24,30 +25,45 @@ import { endedAtFrom, startedAtFrom, timeInputValue } from './eventTime.js';
  * A sleep that crosses midnight needs no extra field: an end time earlier than
  * the start is read on the following day, which is decision D5's "one session,
  * listed on the day it started". 23:00 → 01:00 is two hours, not an error.
+ *
+ * With an `event`, the same form edits it. Both times start from what was
+ * stored, and — this is the part that matters for D5 — the day both times are
+ * read on is the day the sleep *started*, not today. So 23:00 → 01:00 recorded
+ * last night stays 23:00 → 01:00 last night when it is edited, and stays one
+ * session crossing one midnight. `endedAtFrom` does the rollover, here as in a
+ * new entry; there is no date arithmetic in this form.
  */
 
 export interface SleepFormProps {
   familyId: string;
   babyId: string;
+  /** The sleep being edited, if this is an edit rather than a new entry. */
+  event?: BabyEvent | undefined;
   /** Called once the sleep is saved and the event list has been refreshed. */
   onSaved: () => void;
   onCancel: () => void;
 }
 
-export function SleepForm({ familyId, babyId, onSaved, onCancel }: SleepFormProps) {
+export function SleepForm({ familyId, babyId, event, onSaved, onCancel }: SleepFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
+  const editing = event !== undefined;
+
   // Defaulted once, on mount: the clock must not move under the parent while
-  // they are typing.
-  const [startTime, setStartTime] = useState(() => timeInputValue(new Date()));
-  const [endTime, setEndTime] = useState('');
+  // they are typing. An edit starts from the stored times instead.
+  const [startTime, setStartTime] = useState(() =>
+    timeInputValue(event === undefined ? new Date() : new Date(event.startedAt)),
+  );
+  const [endTime, setEndTime] = useState(() =>
+    event?.endedAt === undefined ? '' : timeInputValue(new Date(event.endedAt)),
+  );
   const [startError, setStartError] = useState<string | undefined>(undefined);
   const [endError, setEndError] = useState<string | undefined>(undefined);
 
   const save = useMutation({
     mutationFn: (payload: { startedAt: string; endedAt: string }) =>
-      createBabyEvent(familyId, babyId, {
+      saveBabyEvent(familyId, babyId, event?.id, {
         type: 'SLEEP',
         startedAt: payload.startedAt,
         endedAt: payload.endedAt,
@@ -62,13 +78,14 @@ export function SleepForm({ familyId, babyId, onSaved, onCancel }: SleepFormProp
     },
   });
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault();
+  function handleSubmit(formEvent: FormEvent<HTMLFormElement>): void {
+    formEvent.preventDefault();
 
     // One `day` anchors both times: the start is read on it, and the end is read
     // relative to that start, so the pair is one interval rather than two
-    // independently resolved instants.
-    const day = new Date();
+    // independently resolved instants. Editing anchors on the day the sleep
+    // started, so an overnight sleep is not dragged onto today.
+    const day = event === undefined ? new Date() : new Date(event.startedAt);
     const startedAt = startedAtFrom(startTime, day);
     const trimmedEnd = endTime.trim();
     const endedAt =
@@ -96,11 +113,11 @@ export function SleepForm({ familyId, babyId, onSaved, onCancel }: SleepFormProp
   }
 
   return (
-    <Card title={t('today.sleep.title')}>
+    <Card title={editing ? t('today.sleep.editTitle') : t('today.sleep.title')}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {save.isError ? (
           <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
-            {t('today.sleep.errors.saveFailed')}
+            {editing ? t('today.sleep.errors.updateFailed') : t('today.sleep.errors.saveFailed')}
           </p>
         ) : null}
 
@@ -109,8 +126,8 @@ export function SleepForm({ familyId, babyId, onSaved, onCancel }: SleepFormProp
           type="time"
           name="startedAt"
           value={startTime}
-          onChange={(event) => {
-            setStartTime(event.target.value);
+          onChange={(changeEvent) => {
+            setStartTime(changeEvent.target.value);
           }}
           error={startError}
           disabled={save.isPending}
@@ -122,8 +139,8 @@ export function SleepForm({ familyId, babyId, onSaved, onCancel }: SleepFormProp
           type="time"
           name="endedAt"
           value={endTime}
-          onChange={(event) => {
-            setEndTime(event.target.value);
+          onChange={(changeEvent) => {
+            setEndTime(changeEvent.target.value);
           }}
           error={endError}
           disabled={save.isPending}

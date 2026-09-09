@@ -1,14 +1,22 @@
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler } from 'express';
 import type {
   BabyEventListResponse,
   BabyEventResponse,
   CreateBabyEventInput,
   ListBabyEventsQuery,
+  UpdateBabyEventInput,
 } from '@baby-tracker/shared';
 import { getFamilyScope } from '../../middleware/familyAccess.js';
 import { getBabyScope } from '../../middleware/babyAccess.js';
 import { validatedQuery } from '../../middleware/validate.js';
 import * as eventService from './service.js';
+
+/**
+ * Express 5 types a route parameter as string | string[]; anything that is not a
+ * plain string is not an id, and the service answers 404 for it.
+ */
+const eventIdOf = (req: Request): string =>
+  typeof req.params.eventId === 'string' ? req.params.eventId : '';
 
 export const create: RequestHandler = async (req, res) => {
   const event = await eventService.createEvent(
@@ -28,14 +36,25 @@ export const list: RequestHandler = async (req, res) => {
 };
 
 export const getOne: RequestHandler = async (req, res) => {
-  // Express 5 types a route parameter as string | string[]; anything that is
-  // not a plain string is not an id, and the service answers 404 for it.
-  const { eventId } = req.params;
-  const event = await eventService.getEvent(
+  const event = await eventService.getEvent(getFamilyScope(req), getBabyScope(req), eventIdOf(req));
+
+  res.status(200).json({ event } satisfies BabyEventResponse);
+};
+
+export const update: RequestHandler = async (req, res) => {
+  const event = await eventService.updateEvent(
     getFamilyScope(req),
     getBabyScope(req),
-    typeof eventId === 'string' ? eventId : '',
+    eventIdOf(req),
+    req.body as UpdateBabyEventInput,
   );
 
   res.status(200).json({ event } satisfies BabyEventResponse);
+};
+
+/** 204 with no body, the same shape logout uses for a success that has nothing to say. */
+export const remove: RequestHandler = async (req, res) => {
+  await eventService.deleteEvent(getFamilyScope(req), getBabyScope(req), eventIdOf(req));
+
+  res.status(204).send();
 };

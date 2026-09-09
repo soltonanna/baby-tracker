@@ -1,11 +1,15 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-type Variant = 'primary' | 'secondary' | 'quiet';
+type Variant = 'primary' | 'secondary' | 'quiet' | 'danger';
 
 const VARIANT_CLASSES: Record<Variant, string> = {
   primary: 'bg-accent text-white active:brightness-95',
   secondary: 'bg-accent-soft text-accent active:brightness-95',
   quiet: 'bg-transparent text-muted active:bg-surface-sunken',
+  // Filled, in the palette's one alarming colour: a destructive confirmation
+  // must not look like the calm action beside it. The label says "delete" too,
+  // so the warning never rests on the colour alone.
+  danger: 'bg-critical text-white active:brightness-95',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

@@ -88,6 +88,10 @@ interface Routes {
   events?: (babyId: string) => Promise<Response>;
   /** POST to the same path as `events`. */
   createEvent?: (babyId: string) => Promise<Response>;
+  /** PATCH on one event. */
+  updateEvent?: (babyId: string, eventId: string) => Promise<Response>;
+  /** DELETE on one event. */
+  deleteEvent?: (babyId: string, eventId: string) => Promise<Response>;
 }
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -100,6 +104,26 @@ function stubApi(routes: Routes): void {
   fetchMock = vi.fn((input: unknown, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? 'GET';
+
+    const oneEvent = /\/families\/[^/]+\/babies\/([^/]+)\/events\/([^/]+)$/.exec(url);
+    if (oneEvent) {
+      const babyId = oneEvent[1] ?? '';
+      const eventId = oneEvent[2] ?? '';
+      if (method === 'PATCH') {
+        return (
+          routes.updateEvent ??
+          ((id: string, patchedId: string) =>
+            Promise.resolve(json({ event: event(patchedId, id) })))
+        )(babyId, eventId);
+      }
+      if (method === 'DELETE') {
+        // 204 with no body, exactly as the API answers it.
+        return (routes.deleteEvent ?? (() => Promise.resolve(new Response(null, { status: 204 }))))(
+          babyId,
+          eventId,
+        );
+      }
+    }
 
     const events = /\/families\/[^/]+\/babies\/([^/]+)\/events$/.exec(url);
     if (events) {
@@ -169,6 +193,21 @@ const createdEventBodies = (): unknown[] =>
     .filter((call) => (call[1] as RequestInit | undefined)?.method === 'POST')
     .map((call) => JSON.parse(String((call[1] as RequestInit).body)) as unknown);
 
+/** The edits made so far: where each one was sent, and what it carried. */
+const patchedEvents = (): { url: string; body: unknown }[] =>
+  fetchMock.mock.calls
+    .filter((call) => (call[1] as RequestInit | undefined)?.method === 'PATCH')
+    .map((call) => ({
+      url: String(call[0]),
+      body: JSON.parse(String((call[1] as RequestInit).body)) as unknown,
+    }));
+
+/** The URLs of the deletions made so far. */
+const deletedEventUrls = (): string[] =>
+  fetchMock.mock.calls
+    .filter((call) => (call[1] as RequestInit | undefined)?.method === 'DELETE')
+    .map((call) => String(call[0]));
+
 /**
  * The instant a `HH:MM` shown in an entry form stands for, in this machine's zone.
  * `dayOffset` moves it whole local days — 1 is the following day, which is where
@@ -216,6 +255,21 @@ async function eventsCard(): Promise<HTMLElement> {
     throw new Error('The events card heading is not inside a section');
   }
   return section;
+}
+
+/** The event rows on screen, once everything above the card has resolved. */
+async function eventRows(): Promise<HTMLElement[]> {
+  const card = await eventsCard();
+  return within(card).findAllByRole('listitem');
+}
+
+/** The first event row — the only one, in most of the tests below. */
+async function firstEventRow(): Promise<HTMLElement> {
+  const [row] = await eventRows();
+  if (row === undefined) {
+    throw new Error('No event rows on screen');
+  }
+  return row;
 }
 
 beforeEach(() => {
@@ -1531,5 +1585,559 @@ describe('adding a baby', () => {
     expect(
       (screen.getByRole('group', { name: 'Gender (optional)' }) as HTMLFieldSetElement).disabled,
     ).toBe(true);
+  });
+});
+
+describe('event rows', () => {
+  /** Decorative, so a row's icon is found the way its `<time>` is: by the DOM. */
+  const iconOf = (row: HTMLElement): Element | null => row.querySelector('[data-icon]');
+
+  /** Renders one event of the given shape and returns its row. */
+  async function rowFor(overrides: Partial<BabyEvent>): Promise<HTMLElement> {
+    stubApi({
+      events: () => Promise.resolve(json({ events: [event('event-1', ANI_ID, overrides)] })),
+    });
+    renderToday();
+    return firstEventRow();
+  }
+
+  it('marks a feeding with a bottle, without replacing the type name', async () => {
+    const row = await rowFor({ type: 'FEEDING' });
+
+    expect(iconOf(row)?.getAttribute('data-icon')).toBe('bottle');
+    // The icon adds nothing to the accessibility tree; the words still carry it.
+    expect(iconOf(row)?.getAttribute('aria-hidden')).toBe('true');
+    expect(within(row).getByText('Feeding')).toBeDefined();
+  });
+
+  it('marks a sleep with a moon', async () => {
+    const row = await rowFor({ type: 'SLEEP' });
+
+    expect(iconOf(row)?.getAttribute('data-icon')).toBe('moon');
+    expect(within(row).getByText('Sleep')).toBeDefined();
+  });
+
+  it('marks a nappy with a nappy', async () => {
+    const row = await rowFor({ type: 'DIAPER', details: 'wet' });
+
+    expect(iconOf(row)?.getAttribute('data-icon')).toBe('diaper');
+    expect(within(row).getByText('Nappy')).toBeDefined();
+  });
+
+  it('marks a note with a page', async () => {
+    const row = await rowFor({ type: 'NOTE', details: 'Smiled at the window' });
+
+    expect(iconOf(row)?.getAttribute('data-icon')).toBe('note');
+    expect(within(row).getByText('Note')).toBeDefined();
+  });
+
+  it('gives every row an Edit and a Delete action', async () => {
+    stubApi({ events: () => Promise.resolve(json({ events: aniEvents })) });
+    renderToday();
+
+    const rows = await eventRows();
+    expect(rows).toHaveLength(2);
+
+    expect(
+      within(rows[0] as HTMLElement).getByRole('button', { name: 'Edit Feeding' }),
+    ).toBeDefined();
+    expect(
+      within(rows[0] as HTMLElement).getByRole('button', { name: 'Delete Feeding' }),
+    ).toBeDefined();
+    expect(
+      within(rows[1] as HTMLElement).getByRole('button', { name: 'Edit Sleep' }),
+    ).toBeDefined();
+    expect(
+      within(rows[1] as HTMLElement).getByRole('button', { name: 'Delete Sleep' }),
+    ).toBeDefined();
+  });
+});
+
+describe('editing an event', () => {
+  /** A feeding recorded at a known local time, so its form fields are predictable. */
+  const feeding = (overrides: Partial<BabyEvent> = {}): BabyEvent =>
+    event('event-ani-1', ANI_ID, {
+      type: 'FEEDING',
+      startedAt: startedAtFor('07:30'),
+      amount: 120,
+      unit: 'ml',
+      ...overrides,
+    });
+
+  /** Opens the edit form on the first row, by the action a parent would tap. */
+  async function openEdit(name: string): Promise<void> {
+    const row = await firstEventRow();
+    await userEvent.click(within(row).getByRole('button', { name }));
+  }
+
+  it('opens the matching form, filled in with what was stored', async () => {
+    stubApi({ events: () => Promise.resolve(json({ events: [feeding()] })) });
+    renderToday();
+
+    await openEdit('Edit Feeding');
+
+    // The feeding form, in its editing title, holding the stored values.
+    expect(screen.getByRole('heading', { name: 'Edit feeding' })).toBeDefined();
+    expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('07:30');
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('120');
+    // Stored volumes are canonical millilitres (D3), so that is what is shown.
+    expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('ml');
+  });
+
+  it('opens the form belonging to the event, not the last one used', async () => {
+    const note = event('event-ani-9', ANI_ID, {
+      type: 'NOTE',
+      startedAt: startedAtFor('09:15'),
+      details: 'Smiled at the window',
+    });
+    stubApi({ events: () => Promise.resolve(json({ events: [note] })) });
+    renderToday();
+
+    await openEdit('Edit Note');
+
+    expect(screen.getByRole('heading', { name: 'Edit note' })).toBeDefined();
+    expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe(
+      'Smiled at the window',
+    );
+    expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('09:15');
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+  });
+
+  it('sends a PATCH to the event being edited, and nothing else', async () => {
+    stubApi({ events: () => Promise.resolve(json({ events: [feeding()] })) });
+    renderToday();
+
+    await openEdit('Edit Feeding');
+    const amount = screen.getByLabelText('Amount') as HTMLInputElement;
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '150');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(patchedEvents()).toHaveLength(1);
+    });
+
+    const [patch] = patchedEvents();
+    // Path-scoped: the family and the baby are in the URL, never in the body.
+    expect(patch?.url).toContain(`/families/${FAMILY_ID}/babies/${ANI_ID}/events/event-ani-1`);
+    expect(patch?.body).toEqual({
+      type: 'FEEDING',
+      startedAt: startedAtFor('07:30'),
+      amount: 150,
+      unit: 'ml',
+    });
+    expect(createdEventBodies()).toEqual([]);
+  });
+
+  it('closes the form only once the refreshed list holds the change', async () => {
+    let stored = feeding();
+
+    stubApi({
+      events: () => Promise.resolve(json({ events: [stored] })),
+      updateEvent: () => {
+        stored = feeding({ amount: 150 });
+        return Promise.resolve(json({ event: stored }));
+      },
+    });
+    renderToday();
+
+    await openEdit('Edit Feeding');
+    const amount = screen.getByLabelText('Amount') as HTMLInputElement;
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '150');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // The new value is on screen, the form is gone, and the list was re-read
+    // for this baby — the events query is refetched, not patched by hand.
+    expect(await screen.findByText('150 ml')).toBeDefined();
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+    expect(requestedEventBabyIds()).toEqual([ANI_ID, ANI_ID]);
+  });
+
+  it('keeps the form open, with what was entered, when the edit fails', async () => {
+    stubApi({
+      events: () => Promise.resolve(json({ events: [feeding()] })),
+      updateEvent: () => Promise.resolve(apiError(500, 'INTERNAL_ERROR')),
+    });
+    renderToday();
+
+    await openEdit('Edit Feeding');
+    const amount = screen.getByLabelText('Amount') as HTMLInputElement;
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '150');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Could not update the feeding. Please try again.',
+    );
+    // Nothing is cleared and nothing is closed: the parent retries.
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('150');
+    expect(screen.getByRole('heading', { name: 'Edit feeding' })).toBeDefined();
+  });
+
+  it('leaves the event untouched when the edit is cancelled', async () => {
+    stubApi({ events: () => Promise.resolve(json({ events: [feeding()] })) });
+    renderToday();
+
+    await openEdit('Edit Feeding');
+    const amount = screen.getByLabelText('Amount') as HTMLInputElement;
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '150');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+    expect(patchedEvents()).toEqual([]);
+    expect(await screen.findByText('120 ml')).toBeDefined();
+  });
+
+  it('stores canonical millilitres when the amount is edited in ounces', async () => {
+    stubApi({ events: () => Promise.resolve(json({ events: [feeding()] })) });
+    renderToday();
+
+    await openEdit('Edit Feeding');
+    await userEvent.selectOptions(screen.getByLabelText('Unit'), 'oz');
+    const amount = screen.getByLabelText('Amount') as HTMLInputElement;
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '4');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(patchedEvents()).toHaveLength(1);
+    });
+
+    // 4 US fl oz is 118.29… ml, converted by the shared `volumeToMl` exactly as
+    // the create flow converts it. `oz` never reaches the API.
+    expect(patchedEvents()[0]?.body).toMatchObject({ amount: 118, unit: 'ml' });
+  });
+
+  describe('a sleep', () => {
+    const sameDaySleep = event('event-sleep', ANI_ID, {
+      type: 'SLEEP',
+      startedAt: startedAtFor('13:00'),
+      endedAt: startedAtFor('14:30'),
+    });
+
+    /** 23:00 → 01:00, the overnight session decision D5 keeps whole. */
+    const overnight = event('event-sleep', ANI_ID, {
+      type: 'SLEEP',
+      startedAt: startedAtFor('23:00'),
+      endedAt: startedAtFor('01:00', 1),
+    });
+
+    it('is filled in with both of its times', async () => {
+      stubApi({ events: () => Promise.resolve(json({ events: [sameDaySleep] })) });
+      renderToday();
+
+      await openEdit('Edit Sleep');
+
+      expect(screen.getByRole('heading', { name: 'Edit sleep' })).toBeDefined();
+      expect((screen.getByLabelText('Start') as HTMLInputElement).value).toBe('13:00');
+      expect((screen.getByLabelText('End') as HTMLInputElement).value).toBe('14:30');
+    });
+
+    it('keeps a same-day sleep on its own day when it is edited', async () => {
+      stubApi({ events: () => Promise.resolve(json({ events: [sameDaySleep] })) });
+      renderToday();
+
+      await openEdit('Edit Sleep');
+      setTime(screen.getByLabelText('End') as HTMLInputElement, '15:00');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(patchedEvents()).toHaveLength(1);
+      });
+      expect(patchedEvents()[0]?.body).toEqual({
+        type: 'SLEEP',
+        startedAt: startedAtFor('13:00'),
+        endedAt: startedAtFor('15:00'),
+      });
+    });
+
+    it('shows an overnight sleep by its clock times, not shifted onto today', async () => {
+      stubApi({ events: () => Promise.resolve(json({ events: [overnight] })) });
+      renderToday();
+
+      await openEdit('Edit Sleep');
+
+      expect((screen.getByLabelText('Start') as HTMLInputElement).value).toBe('23:00');
+      expect((screen.getByLabelText('End') as HTMLInputElement).value).toBe('01:00');
+    });
+
+    it('keeps an overnight sleep crossing one midnight when it is edited', async () => {
+      let stored = overnight;
+
+      stubApi({
+        events: () => Promise.resolve(json({ events: [stored] })),
+        updateEvent: () => {
+          stored = event('event-sleep', ANI_ID, {
+            type: 'SLEEP',
+            startedAt: startedAtFor('23:00'),
+            endedAt: startedAtFor('02:00', 1),
+          });
+          return Promise.resolve(json({ event: stored }));
+        },
+      });
+      renderToday();
+
+      await openEdit('Edit Sleep');
+      setTime(screen.getByLabelText('End') as HTMLInputElement, '02:00');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(patchedEvents()).toHaveLength(1);
+      });
+
+      // The end is read on the day *after* the start, exactly as a new overnight
+      // sleep is: the edit does not drag the session onto today, and the two
+      // instants stay three hours apart across one midnight.
+      const body = patchedEvents()[0]?.body as { startedAt: string; endedAt: string };
+      expect(body).toEqual({
+        type: 'SLEEP',
+        startedAt: startedAtFor('23:00'),
+        endedAt: startedAtFor('02:00', 1),
+      });
+      expect(Date.parse(body.endedAt) - Date.parse(body.startedAt)).toBe(3 * 60 * 60 * 1000);
+
+      // And the list still derives the duration from those two instants.
+      expect(await screen.findByText('3h 0m')).toBeDefined();
+    });
+  });
+
+  describe('a nappy', () => {
+    const diaper = event('event-diaper', ANI_ID, {
+      type: 'DIAPER',
+      startedAt: startedAtFor('10:15'),
+      details: 'wet_and_dirty',
+    });
+
+    const kindRadio = (label: string): HTMLInputElement =>
+      screen.getByRole('radio', { name: label }) as HTMLInputElement;
+
+    it('opens with the stored kind selected', async () => {
+      stubApi({ events: () => Promise.resolve(json({ events: [diaper] })) });
+      renderToday();
+
+      await openEdit('Edit Nappy');
+
+      expect(screen.getByRole('heading', { name: 'Edit nappy' })).toBeDefined();
+      expect(kindRadio('Wet and dirty').checked).toBe(true);
+      expect(kindRadio('Wet').checked).toBe(false);
+      expect((screen.getByLabelText('Time') as HTMLInputElement).value).toBe('10:15');
+    });
+
+    it('sends the canonical token of the newly chosen kind', async () => {
+      stubApi({ events: () => Promise.resolve(json({ events: [diaper] })) });
+      renderToday();
+
+      await openEdit('Edit Nappy');
+      await userEvent.click(kindRadio('Dry'));
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(patchedEvents()).toHaveLength(1);
+      });
+      // `dry`, never "Dry": the stored vocabulary does not depend on the
+      // language the parent was reading.
+      expect(patchedEvents()[0]?.body).toEqual({
+        type: 'DIAPER',
+        startedAt: startedAtFor('10:15'),
+        details: 'dry',
+      });
+    });
+  });
+
+  describe('a note', () => {
+    const note = event('event-note', ANI_ID, {
+      type: 'NOTE',
+      startedAt: startedAtFor('09:15'),
+      details: 'Smiled at the window',
+    });
+
+    it('sends the edited text', async () => {
+      stubApi({ events: () => Promise.resolve(json({ events: [note] })) });
+      renderToday();
+
+      await openEdit('Edit Note');
+      const details = screen.getByLabelText('Note') as HTMLTextAreaElement;
+      await userEvent.clear(details);
+      await userEvent.type(details, 'Slept through the film');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(patchedEvents()).toHaveLength(1);
+      });
+      expect(patchedEvents()[0]?.body).toEqual({
+        type: 'NOTE',
+        startedAt: startedAtFor('09:15'),
+        details: 'Slept through the film',
+      });
+    });
+
+    it('still enforces the shared 1000-character limit', async () => {
+      stubApi({ events: () => Promise.resolve(json({ events: [note] })) });
+      renderToday();
+
+      await openEdit('Edit Note');
+      const details = screen.getByLabelText('Note') as HTMLTextAreaElement;
+      expect(details.maxLength).toBe(1000);
+
+      // 1001 characters, entered as a paste would be: one past the shared
+      // `eventDetailsSchema` maximum, so nothing is sent.
+      fireEvent.change(details, { target: { value: 'a'.repeat(1001) } });
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('Please write a note.')).toBeDefined();
+      expect(patchedEvents()).toEqual([]);
+    });
+  });
+
+  it('edits only the selected baby’s event, and leaves the other twin alone', async () => {
+    stubApi({
+      events: (babyId) =>
+        Promise.resolve(json({ events: babyId === ANI_ID ? [feeding()] : nareEvents })),
+    });
+    renderToday();
+
+    await openEdit('Edit Feeding');
+    const amount = screen.getByLabelText('Amount') as HTMLInputElement;
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '150');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(patchedEvents()).toHaveLength(1);
+    });
+
+    // Sent to Ani's event, and only Ani's list is re-read.
+    expect(patchedEvents()[0]?.url).toContain(`/babies/${ANI_ID}/events/event-ani-1`);
+    await waitFor(() => {
+      expect(requestedEventBabyIds()).toEqual([ANI_ID, ANI_ID]);
+    });
+
+    // Nare's tab still shows Nare's own events.
+    await userEvent.click(screen.getByRole('tab', { name: 'Nare' }));
+    expect(await screen.findByText('Nappy')).toBeDefined();
+    expect(screen.queryByText('120 ml')).toBeNull();
+  });
+});
+
+describe('deleting an event', () => {
+  const feeding = event('event-ani-1', ANI_ID, {
+    type: 'FEEDING',
+    startedAt: startedAtFor('07:30'),
+    amount: 120,
+    unit: 'ml',
+  });
+
+  /** Taps the row's delete action, which only asks the question. */
+  async function askToDelete(): Promise<HTMLElement> {
+    const row = await firstEventRow();
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete Feeding' }));
+    return row;
+  }
+
+  it('asks before deleting anything', async () => {
+    stubApi({ events: () => Promise.resolve(json({ events: [feeding] })) });
+    renderToday();
+
+    const row = await askToDelete();
+
+    // Nothing has been sent, the event is still listed, and the parent is
+    // offered both ways out.
+    expect(deletedEventUrls()).toEqual([]);
+    expect(within(row).getByText('Delete this event? This cannot be undone.')).toBeDefined();
+    expect(within(row).getByRole('button', { name: 'Delete' })).toBeDefined();
+    expect(within(row).getByRole('button', { name: 'Cancel' })).toBeDefined();
+    expect(screen.getByText('120 ml')).toBeDefined();
+  });
+
+  it('leaves the event alone when the confirmation is cancelled', async () => {
+    stubApi({ events: () => Promise.resolve(json({ events: [feeding] })) });
+    renderToday();
+
+    const row = await askToDelete();
+    await userEvent.click(within(row).getByRole('button', { name: 'Cancel' }));
+
+    expect(deletedEventUrls()).toEqual([]);
+    expect(screen.getByText('120 ml')).toBeDefined();
+    // Back to the row's ordinary actions.
+    expect(within(row).getByRole('button', { name: 'Delete Feeding' })).toBeDefined();
+    expect(within(row).queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('deletes the event and refreshes the list once confirmed', async () => {
+    let deleted = false;
+
+    stubApi({
+      events: () => Promise.resolve(json({ events: deleted ? [] : [feeding] })),
+      deleteEvent: () => {
+        deleted = true;
+        return Promise.resolve(new Response(null, { status: 204 }));
+      },
+    });
+    renderToday();
+
+    const row = await askToDelete();
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+
+    // The row is gone because the refreshed list no longer holds it, and the
+    // parent is still on the Today page.
+    const card = await eventsCard();
+    expect(await within(card).findByText('Nothing recorded yet.')).toBeDefined();
+    expect(deletedEventUrls()).toHaveLength(1);
+    expect(deletedEventUrls()[0]).toContain(
+      `/families/${FAMILY_ID}/babies/${ANI_ID}/events/event-ani-1`,
+    );
+    expect(requestedEventBabyIds()).toEqual([ANI_ID, ANI_ID]);
+    expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+  });
+
+  it('keeps the event and reports the failure when the delete fails', async () => {
+    stubApi({
+      events: () => Promise.resolve(json({ events: [feeding] })),
+      deleteEvent: () => Promise.resolve(apiError(500, 'INTERNAL_ERROR')),
+    });
+    renderToday();
+
+    const row = await askToDelete();
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+
+    expect(await screen.findByRole('alert')).toHaveProperty(
+      'textContent',
+      'Could not delete the event. Please try again.',
+    );
+    // Still there: nothing is removed optimistically.
+    expect(screen.getByText('120 ml')).toBeDefined();
+  });
+
+  it('deletes only the selected baby’s event, and leaves the other twin alone', async () => {
+    let deleted = false;
+
+    stubApi({
+      events: (babyId) =>
+        Promise.resolve(
+          json({ events: babyId === ANI_ID ? (deleted ? [] : [feeding]) : nareEvents }),
+        ),
+      deleteEvent: () => {
+        deleted = true;
+        return Promise.resolve(new Response(null, { status: 204 }));
+      },
+    });
+    renderToday();
+
+    const row = await askToDelete();
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+
+    const card = await eventsCard();
+    expect(await within(card).findByText('Nothing recorded yet.')).toBeDefined();
+    expect(deletedEventUrls()[0]).toContain(`/babies/${ANI_ID}/events/`);
+    await waitFor(() => {
+      expect(requestedEventBabyIds()).toEqual([ANI_ID, ANI_ID]);
+    });
+
+    // Nare's events were never touched, and are still there.
+    await userEvent.click(screen.getByRole('tab', { name: 'Nare' }));
+    expect(await screen.findByText('Nappy')).toBeDefined();
   });
 });

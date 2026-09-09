@@ -86,3 +86,58 @@ export async function createBabyEvent(
   );
   return event;
 }
+
+/**
+ * What the API accepts in the body of an edit.
+ *
+ * Every field of a create, all optional: an edit form sends the event back
+ * whole, and `updateBabyEventSchema` in the shared package accepts exactly that
+ * — `type` included, as long as it still matches the stored one. `familyId` and
+ * `babyId` stay in the path here too, so an edit can never re-home an event.
+ */
+export type UpdateBabyEventPayload = Partial<CreateBabyEventPayload>;
+
+export async function updateBabyEvent(
+  familyId: string,
+  babyId: string,
+  eventId: string,
+  payload: UpdateBabyEventPayload,
+): Promise<BabyEvent> {
+  const { event } = await apiFetch<BabyEventResponse>(
+    `/families/${familyId}/babies/${babyId}/events/${eventId}`,
+    { method: 'PATCH', body: JSON.stringify(payload) },
+  );
+  return event;
+}
+
+/**
+ * Deletes one event. The API answers 204 with no body, so there is nothing to
+ * return and nothing to parse — a rejected promise is the only failure signal.
+ */
+export async function deleteBabyEvent(
+  familyId: string,
+  babyId: string,
+  eventId: string,
+): Promise<void> {
+  await apiFetch<null>(`/families/${familyId}/babies/${babyId}/events/${eventId}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
+ * Create or edit, chosen by whether there is an event to edit.
+ *
+ * Four entry forms each need this one decision and nothing else in common, so
+ * it lives here as one function rather than as a form abstraction: a form knows
+ * its own fields, and this knows the verb.
+ */
+export function saveBabyEvent(
+  familyId: string,
+  babyId: string,
+  eventId: string | undefined,
+  payload: CreateBabyEventPayload,
+): Promise<BabyEvent> {
+  return eventId === undefined
+    ? createBabyEvent(familyId, babyId, payload)
+    : updateBabyEvent(familyId, babyId, eventId, payload);
+}

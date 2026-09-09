@@ -1,6 +1,13 @@
+import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { DIAPER_KINDS, durationSeconds, type BabyEvent } from '@baby-tracker/shared';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { Button } from '../../components/ui/Button.js';
+import { PencilIcon, TrashIcon } from '../../components/ui/icons.js';
+import { queryKeys } from '../../services/queryKeys.js';
+import { deleteBabyEvent } from './api.js';
+import { EventTypeIcon } from './EventTypeIcon.js';
 
 /** Times only — the list is one baby's recent events, so the date is context. */
 function formatTime(iso: string, locale: string): string {
@@ -58,36 +65,210 @@ function formatDetails(event: BabyEvent, t: TFunction): string | null {
   return details;
 }
 
-export function EventList({ events }: { events: BabyEvent[] }) {
-  const { t, i18n } = useTranslation();
+export interface EventListProps {
+  events: BabyEvent[];
+  familyId: string;
+  babyId: string;
+  /** Asks the page to open the right entry form on this event. */
+  onEdit: (event: BabyEvent) => void;
+}
 
+export function EventList({ events, familyId, babyId, onEdit }: EventListProps) {
   return (
     <ul className="space-y-2">
-      {events.map((event) => {
-        const amount = formatAmount(event);
-        const duration = sleepDuration(event);
-        const details = formatDetails(event, t);
-        return (
-          <li key={event.id} className="rounded-card border border-line bg-surface px-4 py-3">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="font-medium text-ink">{t(`today.eventType.${event.type}`)}</span>
-              <time dateTime={event.startedAt} className="text-sm text-muted">
-                {formatWhen(event, i18n.language)}
-              </time>
+      {events.map((event) => (
+        <EventRow
+          key={event.id}
+          event={event}
+          familyId={familyId}
+          babyId={babyId}
+          onEdit={onEdit}
+        />
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * One event, with the two things a parent can do to it.
+ *
+ * The row owns its own delete: confirming is per-row state, and so is a failed
+ * delete, so neither can leak onto the row above. Editing is not owned here —
+ * the form belongs to the page, above the list, which is where every other entry
+ * form already opens.
+ */
+function EventRow({
+  event,
+  familyId,
+  babyId,
+  onEdit,
+}: {
+  event: BabyEvent;
+  familyId: string;
+  babyId: string;
+  onEdit: (event: BabyEvent) => void;
+}) {
+  const { t, i18n } = useTranslation();
+  const queryClient = useQueryClient();
+
+  const questionId = useId();
+  const [confirming, setConfirming] = useState(false);
+
+  const amount = formatAmount(event);
+  const duration = sleepDuration(event);
+  const details = formatDetails(event, t);
+  const typeName = t(`today.eventType.${event.type}`);
+
+  const remove = useMutation({
+    mutationFn: () => deleteBabyEvent(familyId, babyId, event.id),
+    onSuccess: async () => {
+      // Awaited: the row goes when the refreshed list no longer holds it, so
+      // nothing disappears from the screen before the API has agreed. Only this
+      // baby's events are invalidated — the other twin's list is untouched.
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.babyEvents(familyId, babyId),
+      });
+    },
+  });
+
+  /** Escape backs out of the confirmation, as it would out of any dialog. */
+  function handleKeyDown(keyEvent: KeyboardEvent<HTMLDivElement>): void {
+    if (keyEvent.key === 'Escape' && !remove.isPending) {
+      remove.reset();
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <li className="rounded-card border border-line bg-surface px-4 py-3">
+      <div className="flex gap-3">
+        <EventTypeIcon type={event.type} className="mt-0.5 h-5 w-5 shrink-0 text-muted" />
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-medium text-ink">{typeName}</span>
+            <time dateTime={event.startedAt} className="text-sm text-muted">
+              {formatWhen(event, i18n.language)}
+            </time>
+          </div>
+
+          <div className="mt-1 flex items-end justify-between gap-3">
+            <div className="min-w-0 space-y-1">
+              {amount === null ? null : <p className="text-sm text-ink">{amount}</p>}
+              {duration === null ? null : (
+                <p className="text-sm text-ink">
+                  {duration.hours > 0
+                    ? t('today.duration.hoursMinutes', duration)
+                    : t('today.duration.minutes', { minutes: duration.minutes })}
+                </p>
+              )}
+              {details === null ? null : <p className="text-sm text-muted">{details}</p>}
             </div>
 
-            {amount === null ? null : <p className="mt-1 text-sm text-ink">{amount}</p>}
-            {duration === null ? null : (
-              <p className="mt-1 text-sm text-ink">
-                {duration.hours > 0
-                  ? t('today.duration.hoursMinutes', duration)
-                  : t('today.duration.minutes', { minutes: duration.minutes })}
-              </p>
+            {/*
+              Hidden while the confirmation is open, so the row never offers two
+              different Delete buttons at once.
+            */}
+            {confirming ? null : (
+              <div className="-my-1 flex shrink-0 items-center gap-1">
+                <IconButton
+                  label={t('today.event.edit', { type: typeName })}
+                  onClick={() => {
+                    onEdit(event);
+                  }}
+                >
+                  <PencilIcon className="h-5 w-5" />
+                </IconButton>
+                <IconButton
+                  label={t('today.event.delete', { type: typeName })}
+                  onClick={() => {
+                    // A previous failure is not part of the new question.
+                    remove.reset();
+                    setConfirming(true);
+                  }}
+                >
+                  <TrashIcon className="h-5 w-5" />
+                </IconButton>
+              </div>
             )}
-            {details === null ? null : <p className="mt-1 text-sm text-muted">{details}</p>}
-          </li>
-        );
-      })}
-    </ul>
+          </div>
+
+          {confirming ? (
+            <div
+              role="group"
+              aria-labelledby={questionId}
+              onKeyDown={handleKeyDown}
+              className="mt-3 space-y-2 rounded-card bg-surface-sunken p-3"
+            >
+              <p id={questionId} className="text-sm text-ink">
+                {t('today.event.confirmDelete')}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="danger"
+                  fullWidth
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    remove.mutate();
+                  }}
+                >
+                  {remove.isPending ? t('today.event.deleting') : t('today.event.confirm')}
+                </Button>
+                <Button
+                  variant="quiet"
+                  autoFocus
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    remove.reset();
+                    setConfirming(false);
+                  }}
+                >
+                  {t('today.event.cancel')}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {remove.isError ? (
+            <p role="alert" className="mt-2 text-sm text-critical">
+              {t('today.event.errors.deleteFailed')}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * A compact icon-only action.
+ *
+ * Comfortable to hit one-handed without dominating the entry it belongs to, and
+ * named for a screen reader by `aria-label` — the glyph inside carries no
+ * accessible text of its own.
+ */
+function IconButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={[
+        'inline-flex h-11 w-11 items-center justify-center rounded-card text-muted',
+        'transition-colors active:bg-surface-sunken',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+      ].join(' ')}
+    >
+      {children}
+    </button>
   );
 }

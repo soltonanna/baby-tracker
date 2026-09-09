@@ -1,5 +1,9 @@
 import { Router } from 'express';
-import { createBabyEventSchema, listBabyEventsQuerySchema } from '@baby-tracker/shared';
+import {
+  createBabyEventSchema,
+  listBabyEventsQuerySchema,
+  updateBabyEventSchema,
+} from '@baby-tracker/shared';
 import { validate } from '../../middleware/validate.js';
 import * as controller from './controller.js';
 
@@ -17,3 +21,5 @@ export const babyEventRouter: Router = Router();
 babyEventRouter.post('/', validate({ body: createBabyEventSchema }), controller.create);
 babyEventRouter.get('/', validate({ query: listBabyEventsQuerySchema }), controller.list);
 babyEventRouter.get('/:eventId', controller.getOne);
+babyEventRouter.patch('/:eventId', validate({ body: updateBabyEventSchema }), controller.update);
+babyEventRouter.delete('/:eventId', controller.remove);

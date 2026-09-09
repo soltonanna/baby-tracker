@@ -109,6 +109,7 @@
     },
     "feeding": {
       "title": "New feeding",
+      "editTitle": "Edit feeding",
       "time": "Time",
       "amount": "Amount",
       "unit": "Unit",
@@ -123,7 +124,8 @@
         "requiredAmount": "Please enter an amount.",
         "invalidAmount": "Please enter a valid amount.",
         "invalidTime": "Please enter a valid time.",
-        "saveFailed": "Could not save the feeding. Please try again."
+        "saveFailed": "Could not save the feeding. Please try again.",
+        "updateFailed": "Could not update the feeding. Please try again."
       }
     },
     "duration": {
@@ -132,6 +134,7 @@
     },
     "sleep": {
       "title": "New sleep",
+      "editTitle": "Edit sleep",
       "start": "Start",
       "end": "End",
       "save": "Save",
@@ -141,11 +144,13 @@
         "invalidStartTime": "Please enter a valid start time.",
         "requiredEndTime": "Please enter an end time.",
         "invalidEndTime": "Please enter a valid end time.",
-        "saveFailed": "Could not save the sleep. Please try again."
+        "saveFailed": "Could not save the sleep. Please try again.",
+        "updateFailed": "Could not update the sleep. Please try again."
       }
     },
     "diaper": {
       "title": "New nappy",
+      "editTitle": "Edit nappy",
       "time": "Time",
       "kind": "Kind",
       "kinds": {
@@ -159,11 +164,13 @@
       "cancel": "Cancel",
       "errors": {
         "invalidTime": "Please enter a valid time.",
-        "saveFailed": "Could not save the nappy change. Please try again."
+        "saveFailed": "Could not save the nappy change. Please try again.",
+        "updateFailed": "Could not update the nappy change. Please try again."
       }
     },
     "note": {
       "title": "New note",
+      "editTitle": "Edit note",
       "time": "Time",
       "details": "Note",
       "save": "Save",
@@ -172,7 +179,20 @@
       "errors": {
         "required": "Please write a note.",
         "invalidTime": "Please enter a valid time.",
-        "saveFailed": "Could not save the note. Please try again."
+        "saveFailed": "Could not save the note. Please try again.",
+        "updateFailed": "Could not update the note. Please try again."
+      }
+    },
+    "babies": "Babies",
+    "event": {
+      "edit": "Edit {{type}}",
+      "delete": "Delete {{type}}",
+      "confirmDelete": "Delete this event? This cannot be undone.",
+      "confirm": "Delete",
+      "deleting": "Deleting…",
+      "cancel": "Cancel",
+      "errors": {
+        "deleteFailed": "Could not delete the event. Please try again."
       }
     }
   }
