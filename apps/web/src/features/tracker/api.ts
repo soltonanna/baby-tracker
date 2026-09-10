@@ -14,6 +14,7 @@ import type {
   IsoDateTime,
 } from '@baby-tracker/shared';
 import { apiFetch } from '../../services/apiClient.js';
+import type { DayRange } from './day.js';
 
 /** The Today screen's reads and writes. Thin wrappers, like features/auth/api.ts. */
 
@@ -52,9 +53,21 @@ export async function fetchBabies(familyId: string): Promise<Baby[]> {
   return babies;
 }
 
-export async function fetchBabyEvents(familyId: string, babyId: string): Promise<BabyEvent[]> {
+/**
+ * One baby's events, newest first.
+ *
+ * With a `range`, only the events that *started* inside it — which is how Today
+ * asks for the current local calendar day. Without one, the endpoint's original
+ * behaviour: the most recent events, whenever they happened.
+ */
+export async function fetchBabyEvents(
+  familyId: string,
+  babyId: string,
+  range?: DayRange,
+): Promise<BabyEvent[]> {
+  const query = range === undefined ? '' : `?${new URLSearchParams({ ...range }).toString()}`;
   const { events } = await apiFetch<BabyEventListResponse>(
-    `/families/${familyId}/babies/${babyId}/events`,
+    `/families/${familyId}/babies/${babyId}/events${query}`,
   );
   return events;
 }

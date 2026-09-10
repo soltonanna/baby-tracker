@@ -3,6 +3,7 @@ import {
   babyEventFieldsSchemaFor,
   type BabyEvent as BabyEventDto,
   type CreateBabyEventInput,
+  type ListBabyEventsQuery,
   type UpdateBabyEventInput,
 } from '@baby-tracker/shared';
 import { BabyEvent, type BabyEventAttributes } from '../../models/BabyEvent.js';
@@ -63,13 +64,33 @@ export async function createEvent(
   return toBabyEvent(event);
 }
 
-/** Most recent first, which is the order a tracker is read in. */
+/**
+ * Most recent first, which is the order a tracker is read in.
+ *
+ * An optional `from`/`to` narrows the list to the events that *started* inside
+ * the half-open interval [from, to). Start, not overlap: a sleep from 23:00 to
+ * 01:00 belongs to the evening it began on and is listed there once, never in
+ * both days (decision D5). A daily *total* is a different question, answered by
+ * `overlapSeconds` when the statistics stage arrives; this is the list.
+ *
+ * The interval is half-open so that consecutive days neither drop an event at
+ * midnight nor show it twice: an event exactly at the day's first instant is in,
+ * one exactly at the next day's first instant is out.
+ */
 export async function listEvents(
   family: FamilyScope,
   baby: BabyScope,
-  limit: number,
+  query: ListBabyEventsQuery,
 ): Promise<BabyEventDto[]> {
-  const events = await BabyEvent.find({ familyId: family.familyId, babyId: baby.babyId })
+  const { limit, from, to } = query;
+
+  const events = await BabyEvent.find({
+    familyId: family.familyId,
+    babyId: baby.babyId,
+    // `from` and `to` are validated as a pair, so one without the other cannot
+    // reach here; the check keeps that fact local and satisfies the types.
+    ...(from !== undefined && to !== undefined ? { startedAt: { $gte: from, $lt: to } } : {}),
+  })
     .sort({ startedAt: -1 })
     .limit(limit);
 

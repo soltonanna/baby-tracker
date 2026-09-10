@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { BabyEvent, BabyEventType } from '@baby-tracker/shared';
+import { useAuth } from '../auth/AuthContext.js';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { Spinner } from '../../components/ui/Spinner.js';
 import { queryKeys } from '../../services/queryKeys.js';
+import { currentDayRange, trackerTimeZone } from './day.js';
 import { fetchBabies, fetchBabyEvents, fetchFamilies } from './api.js';
 import { AddBabyForm } from './AddBabyForm.js';
 import { BabySelector } from './BabySelector.js';
@@ -17,7 +19,13 @@ import { NoteForm } from './NoteForm.js';
 import { SleepForm } from './SleepForm.js';
 
 /**
- * The daily tracker: pick a baby, see their recent events.
+ * The daily tracker: pick a baby, see what happened to them today.
+ *
+ * Today is the current local calendar day, and the list is scoped to it: the
+ * page asks the API for the events that started between this day's first
+ * instant and the next day's, worked out from the shared calendar helpers in
+ * `day.ts`. There is no date navigation — today is the only day this screen
+ * shows — and no daily totals yet.
  *
  * Notes, feedings, sleeps and nappy changes can be added, edited and deleted;
  * the remaining event types and the "both babies" action come later.
@@ -59,6 +67,13 @@ const FORM_FOR_EVENT: Record<BabyEventType, EventFormKind> = {
 
 export function TodayPage() {
   const { t } = useTranslation();
+  const { user } = useAuth();
+
+  // Recomputed on every render on purpose: it is a string pair derived from the
+  // clock, identical all day, so the query key hashes the same and nothing
+  // refetches — and when the clock does roll past midnight, the next render
+  // asks for the new day rather than holding yesterday's until a reload.
+  const today = currentDayRange(trackerTimeZone(user?.timezone));
 
   const familiesQuery = useQuery({
     queryKey: queryKeys.families,
@@ -86,8 +101,8 @@ export function TodayPage() {
       : (babies?.[0]?.id ?? null);
 
   const eventsQuery = useQuery({
-    queryKey: queryKeys.babyEvents(familyId ?? '', selectedBabyId ?? ''),
-    queryFn: () => fetchBabyEvents(familyId ?? '', selectedBabyId ?? ''),
+    queryKey: queryKeys.babyEvents(familyId ?? '', selectedBabyId ?? '', today),
+    queryFn: () => fetchBabyEvents(familyId ?? '', selectedBabyId ?? '', today),
     enabled: familyId !== undefined && selectedBabyId !== null,
   });
 
@@ -264,7 +279,7 @@ export function TodayPage() {
         </div>
       )}
 
-      <Card title={t('today.recentEvents')}>
+      <Card title={t('today.todayEvents')}>
         {eventsQuery.isPending ? (
           <p className="flex items-center gap-2 text-muted">
             <Spinner label={t('today.loadingEvents')} /> {t('today.loadingEvents')}

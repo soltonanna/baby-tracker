@@ -87,10 +87,39 @@ export function babyEventFieldsSchemaFor(type: BabyEventType): ZodType {
   return type === 'DIAPER' ? diaperFieldsSchema : noTypeSpecificFields;
 }
 
-/** The one query parameter the list endpoint takes: how many recent events. */
-export const listBabyEventsQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-});
+/**
+ * What the list endpoint accepts.
+ *
+ * `limit` is unchanged: how many events, newest first, and it still defaults on
+ * its own so a caller that asks for nothing keeps the behaviour it had.
+ *
+ * `from` and `to` are the half-open interval [from, to) an event's *start* must
+ * fall in. They are absolute instants, not calendar dates: the day boundaries
+ * of a local calendar day are worked out where the calendar is known — the UI,
+ * with the shared `localDayRange` helpers — and what reaches the API is two
+ * instants, exactly as decision D5 already does for a sleep's end. The API
+ * therefore does no calendar arithmetic of its own and needs no notion of whose
+ * time zone this is.
+ *
+ * Both or neither. A half-open request is a client mistake, and guessing the
+ * missing end of it (the epoch? now?) would answer something nobody asked for.
+ */
+export const listBabyEventsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    // `z.coerce.date()` rejects an unparseable string rather than passing an
+    // Invalid Date through, so malformed input fails validation like any other.
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+  })
+  .refine((query) => (query.from === undefined) === (query.to === undefined), {
+    message: 'Both "from" and "to" are required to request a range',
+    path: ['from'],
+  })
+  .refine((query) => query.from === undefined || query.to === undefined || query.from < query.to, {
+    message: '"from" must be earlier than "to"',
+    path: ['from'],
+  });
 
 export type CreateBabyEventInput = z.infer<typeof createBabyEventSchema>;
 export type UpdateBabyEventInput = z.infer<typeof updateBabyEventSchema>;

@@ -64,7 +64,7 @@
     "addDiaper": "Add nappy",
     "addNote": "Add note",
     "addBaby": "Add baby",
-    "recentEvents": "Recent events",
+    "todayEvents": "Today",
     "loadingEvents": "Loading events…",
     "eventsFailed": "Could not load events. Please try again.",
     "noEvents": "Nothing recorded yet.",

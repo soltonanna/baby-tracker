@@ -41,7 +41,7 @@ export function startedAtFrom(time: string, day: Date): string | null {
 }
 
 /** The browser's own zone — the one `<input type="time">` and `Date` both speak. */
-function browserTimeZone(): string {
+export function browserTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 

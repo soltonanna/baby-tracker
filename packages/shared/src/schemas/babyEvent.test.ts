@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   babyEventFieldsSchemaFor,
   createBabyEventSchema,
+  listBabyEventsQuerySchema,
   updateBabyEventSchema,
 } from './babyEvent.js';
 
@@ -96,6 +97,68 @@ describe('babyEventFieldsSchemaFor', () => {
       expect(babyEventFieldsSchemaFor(type).safeParse({ details: 'blowout' }).success, type).toBe(
         true,
       );
+    }
+  });
+});
+
+/**
+ * The list endpoint's query, including the day range Today asks for.
+ *
+ * Values arrive as strings, because they came from a query string; the schema
+ * is what turns them into a limit and two instants, or refuses them.
+ */
+describe('listBabyEventsQuerySchema', () => {
+  const parseQuery = (query: unknown) => listBabyEventsQuerySchema.safeParse(query);
+
+  it('still answers a request with no query at all, as it always did', () => {
+    const result = parseQuery({});
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({ limit: 50 });
+  });
+
+  it('keeps the limit rules unchanged', () => {
+    expect(parseQuery({ limit: '2' }).data?.limit).toBe(2);
+    expect(parseQuery({ limit: '200' }).success).toBe(true);
+    expect(parseQuery({ limit: '0' }).success).toBe(false);
+    expect(parseQuery({ limit: '201' }).success).toBe(false);
+    expect(parseQuery({ limit: '1.5' }).success).toBe(false);
+    expect(parseQuery({ limit: 'lots' }).success).toBe(false);
+  });
+
+  it('reads a day range as two instants', () => {
+    const result = parseQuery({
+      from: '2026-09-08T20:00:00.000Z',
+      to: '2026-09-09T20:00:00.000Z',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.from?.toISOString()).toBe('2026-09-08T20:00:00.000Z');
+    expect(result.data?.to?.toISOString()).toBe('2026-09-09T20:00:00.000Z');
+    expect(result.data?.limit).toBe(50);
+  });
+
+  it('requires both ends of a range, never one', () => {
+    expect(parseQuery({ from: '2026-09-08T20:00:00.000Z' }).success).toBe(false);
+    expect(parseQuery({ to: '2026-09-09T20:00:00.000Z' }).success).toBe(false);
+  });
+
+  it('requires the range to run forwards', () => {
+    const same = '2026-09-09T20:00:00.000Z';
+    expect(parseQuery({ from: same, to: same }).success).toBe(false);
+    expect(
+      parseQuery({ from: '2026-09-09T20:00:00.000Z', to: '2026-09-08T20:00:00.000Z' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a malformed instant rather than passing an invalid date through', () => {
+    for (const range of [
+      { from: 'yesterday', to: '2026-09-09T20:00:00.000Z' },
+      { from: '2026-09-08T20:00:00.000Z', to: 'tomorrow' },
+      { from: '', to: '' },
+      { from: '2026-13-45T00:00:00.000Z', to: '2026-09-09T20:00:00.000Z' },
+    ]) {
+      expect(parseQuery(range).success, JSON.stringify(range)).toBe(false);
     }
   });
 });

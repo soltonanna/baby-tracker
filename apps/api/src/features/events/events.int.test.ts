@@ -355,6 +355,197 @@ describe('GET .../events', () => {
   });
 });
 
+describe('GET .../events?from=&to=', () => {
+  /**
+   * A local calendar day, as the client resolves it before asking: two absolute
+   * instants from the shared helpers, never a date string the API has to
+   * interpret. Yerevan is +04 all year, so 9 September begins at 20:00 UTC on
+   * the 8th — which is the whole point of scoping by instants rather than by
+   * the UTC date.
+   */
+  const ZONE = 'Asia/Yerevan';
+  const DAY = '2026-09-09';
+
+  const day = (localDate: string) => localDayRange(localDate, ZONE);
+
+  /** An instant `hours` into a local day (fractions allowed: 1.5 is 01:30). */
+  const localTime = (localDate: string, hours: number): string =>
+    new Date(localDayStart(localDate, ZONE).getTime() + hours * 3_600_000).toISOString();
+
+  const listDay = (parent: Parent, localDate: string, extra = '', babyId = parent.babyId) => {
+    const { start, end } = day(localDate);
+    return request(app)
+      .get(
+        `${eventsUrl(parent.familyId, babyId)}?from=${encodeURIComponent(
+          start.toISOString(),
+        )}&to=${encodeURIComponent(end.toISOString())}${extra}`,
+      )
+      .set('Authorization', parent.bearer);
+  };
+
+  const startedAtOf = (response: { body: { events: { startedAt: string }[] } }): string[] =>
+    response.body.events.map((event) => event.startedAt);
+
+  it('returns the events of that day, newest first, and nothing outside it', async () => {
+    const parent = await withBaby();
+    const inside = [localTime(DAY, 8), localTime(DAY, 14), localTime(DAY, 21)];
+    const outside = [
+      localTime(addLocalDays(DAY, -1), 19), // the evening before
+      localTime(addLocalDays(DAY, 1), 8), // the morning after
+    ];
+    for (const startedAt of [...inside, ...outside]) {
+      expect((await addEvent(parent, { type: 'NOTE', startedAt })).status).toBe(201);
+    }
+
+    const response = await listDay(parent, DAY);
+
+    expect(response.status).toBe(200);
+    expect(startedAtOf(response)).toEqual([...inside].reverse());
+  });
+
+  it('is half-open: the first instant of the day is in, the next day’s is not', async () => {
+    const parent = await withBaby();
+    const { start, end } = day(DAY);
+    await addEvent(parent, { type: 'NOTE', startedAt: start.toISOString(), details: 'midnight' });
+    await addEvent(parent, { type: 'NOTE', startedAt: end.toISOString(), details: 'next' });
+    await addEvent(parent, {
+      type: 'NOTE',
+      startedAt: new Date(start.getTime() - 1).toISOString(),
+      details: 'a millisecond too early',
+    });
+    await addEvent(parent, {
+      type: 'NOTE',
+      startedAt: new Date(end.getTime() - 1).toISOString(),
+      details: 'the last millisecond',
+    });
+
+    const response = await listDay(parent, DAY);
+
+    // Two consecutive days neither drop an event at midnight nor show it twice.
+    expect(response.body.events.map((event: { details: string }) => event.details)).toEqual([
+      'the last millisecond',
+      'midnight',
+    ]);
+
+    const next = await listDay(parent, addLocalDays(DAY, 1));
+    expect(next.body.events.map((event: { details: string }) => event.details)).toEqual(['next']);
+  });
+
+  it('lists a sleep that crosses midnight on the day it started, and only there', async () => {
+    // Decision D5: the session belongs to the evening it began on. It is not
+    // duplicated into the day it ended in, and it is not moved there either.
+    const parent = await withBaby();
+    const startedAt = localTime(DAY, 23);
+    const endedAt = localTime(addLocalDays(DAY, 1), 1);
+    await addEvent(parent, { type: 'SLEEP', startedAt, endedAt });
+
+    const started = await listDay(parent, DAY);
+    const ended = await listDay(parent, addLocalDays(DAY, 1));
+
+    expect(startedAtOf(started)).toEqual([startedAt]);
+    expect(started.body.events[0].endedAt).toBe(endedAt);
+    expect(ended.body.events).toEqual([]);
+
+    // And the stored instants are exactly what was sent: no day arithmetic.
+    const stored = await BabyEvent.findOne({ babyId: parent.babyId });
+    expect(stored?.startedAt.toISOString()).toBe(startedAt);
+    expect(stored?.endedAt?.toISOString()).toBe(endedAt);
+    expect(durationSeconds(new Date(startedAt), new Date(endedAt))).toBe(2 * 3600);
+  });
+
+  it('honours the limit inside the range, still newest first', async () => {
+    const parent = await withBaby();
+    for (const hour of [8, 12, 18]) {
+      await addEvent(parent, { type: 'NOTE', startedAt: localTime(DAY, hour) });
+    }
+
+    const response = await listDay(parent, DAY, '&limit=2');
+
+    expect(response.body.events).toHaveLength(2);
+    expect(startedAtOf(response)).toEqual([localTime(DAY, 18), localTime(DAY, 12)]);
+  });
+
+  it('answers an empty day with an empty list, not with the most recent events', async () => {
+    const parent = await withBaby();
+    await addEvent(parent, { type: 'NOTE', startedAt: localTime(addLocalDays(DAY, -3), 10) });
+
+    const response = await listDay(parent, DAY);
+
+    expect(response.status).toBe(200);
+    expect(response.body.events).toEqual([]);
+  });
+
+  it('rejects a range it cannot trust, and lists nothing while doing so', async () => {
+    const parent = await withBaby();
+    await addEvent(parent, { type: 'NOTE', startedAt: localTime(DAY, 10) });
+    const { start, end } = day(DAY);
+    const from = encodeURIComponent(start.toISOString());
+    const to = encodeURIComponent(end.toISOString());
+
+    const rejected = [
+      `?from=${from}`, // one end alone
+      `?to=${to}`,
+      `?from=&to=${to}`, // empty
+      `?from=yesterday&to=${to}`, // malformed
+      `?from=${from}&to=tomorrow`,
+      `?from=${to}&to=${from}`, // backwards
+      `?from=${from}&to=${from}`, // empty interval
+      `?from=${from}&to=${to}&limit=0`, // the limit rules still apply
+    ];
+
+    for (const query of rejected) {
+      const response = await request(app)
+        .get(`${eventsUrl(parent.familyId, parent.babyId)}${query}`)
+        .set('Authorization', parent.bearer);
+
+      expect(response.status, query).toBe(422);
+      expect(response.body.error.code).toBe('VALIDATION_FAILED');
+      expect(response.body.events).toBeUndefined();
+    }
+  });
+
+  it('does not widen what a day may see: a sibling’s events stay out', async () => {
+    const parent = await withBaby('Twin A');
+    const twinB = await addSibling(parent, 'Twin B');
+    await addEvent(parent, { type: 'NOTE', startedAt: localTime(DAY, 9), details: 'A' });
+    await addEvent(parent, { type: 'NOTE', startedAt: localTime(DAY, 10), details: 'B' }, twinB);
+
+    const forA = await listDay(parent, DAY);
+    const forB = await listDay(parent, DAY, '', twinB);
+
+    expect(forA.body.events.map((event: { details: string }) => event.details)).toEqual(['A']);
+    expect(forB.body.events.map((event: { details: string }) => event.details)).toEqual(['B']);
+  });
+
+  it('is still refused across families, range or no range', async () => {
+    const alice = await withBaby();
+    const bob = await withBaby();
+    await addEvent(bob, { type: 'NOTE', startedAt: localTime(DAY, 9), details: 'Bob' });
+
+    const { start, end } = day(DAY);
+    const query = `?from=${encodeURIComponent(start.toISOString())}&to=${encodeURIComponent(
+      end.toISOString(),
+    )}`;
+
+    const wholeChain = await request(app)
+      .get(`${eventsUrl(bob.familyId, bob.babyId)}${query}`)
+      .set('Authorization', alice.bearer);
+    const foreignBaby = await request(app)
+      .get(`${eventsUrl(alice.familyId, bob.babyId)}${query}`)
+      .set('Authorization', alice.bearer);
+    const unauthenticated = await request(app).get(
+      `${eventsUrl(bob.familyId, bob.babyId)}${query}`,
+    );
+
+    expect(wholeChain.status).toBe(404);
+    expect(foreignBaby.status).toBe(404);
+    expect(unauthenticated.status).toBe(401);
+    for (const response of [wholeChain, foreignBaby, unauthenticated]) {
+      expect(JSON.stringify(response.body)).not.toContain('Bob');
+    }
+  });
+});
+
 describe('GET .../events/:eventId', () => {
   it('returns one event to a member of its family', async () => {
     const parent = await withBaby();

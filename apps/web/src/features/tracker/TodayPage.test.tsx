@@ -3,9 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Baby, BabyEvent, FamilyWithRole } from '@baby-tracker/shared';
+import type { Baby, BabyEvent, FamilyWithRole, PublicUser } from '@baby-tracker/shared';
+import { addLocalDays, localDayRange, toLocalDate } from '@baby-tracker/shared';
 import { resetSession } from '../../services/session.js';
 import { resetRefreshState } from '../../services/apiClient.js';
+import { AuthContext, type AuthContextValue } from '../auth/AuthContext.js';
 import { TodayPage } from './TodayPage.js';
 
 /**
@@ -75,8 +77,41 @@ const json = (body: unknown, status = 200): Response =>
 const apiError = (status: number, code: string): Response =>
   json({ error: { code, message: code } }, status);
 
+/**
+ * An events route that answers the way the API does: the events of that baby
+ * whose *start* falls in the requested half-open range, newest first. Without a
+ * range it answers with all of them, which is the endpoint's older behaviour.
+ *
+ * Written once here so that every day-scoping test asserts against one fake
+ * with the same rule, rather than each hand-picking the events it expects.
+ */
+const dayScoped =
+  (all: BabyEvent[]) =>
+  (babyId: string, range: RequestedRange): Promise<Response> => {
+    const mine = all.filter((candidate) => candidate.babyId === babyId);
+    const within =
+      range.from === null || range.to === null
+        ? mine
+        : mine.filter((candidate) => {
+            const started = Date.parse(candidate.startedAt);
+            return started >= Date.parse(range.from ?? '') && started < Date.parse(range.to ?? '');
+          });
+
+    return Promise.resolve(
+      json({
+        events: [...within].sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt)),
+      }),
+    );
+  };
+
 /** Never settles — used to hold a screen in its pending state. */
 const never = (): Promise<Response> => new Promise<Response>(() => {});
+
+/** The day range a list request carried, if any. */
+interface RequestedRange {
+  from: string | null;
+  to: string | null;
+}
 
 interface Routes {
   families?: () => Promise<Response>;
@@ -85,7 +120,7 @@ interface Routes {
   babies?: () => Promise<Response>;
   /** POST to the same path as `babies`. */
   createBaby?: () => Promise<Response>;
-  events?: (babyId: string) => Promise<Response>;
+  events?: (babyId: string, range: RequestedRange) => Promise<Response>;
   /** POST to the same path as `events`. */
   createEvent?: (babyId: string) => Promise<Response>;
   /** PATCH on one event. */
@@ -102,7 +137,16 @@ let fetchMock: ReturnType<typeof vi.fn>;
  */
 function stubApi(routes: Routes): void {
   fetchMock = vi.fn((input: unknown, init?: RequestInit) => {
-    const url = String(input);
+    // Routed on the path alone: the events list now carries a day range in its
+    // query string, and every route below is about which resource is asked for.
+    // The range itself is handed to the events route, so a test can answer the
+    // way the API does — with the events that started inside it.
+    const requested = new URL(String(input), 'http://localhost');
+    const url = requested.pathname;
+    const range: RequestedRange = {
+      from: requested.searchParams.get('from'),
+      to: requested.searchParams.get('to'),
+    };
     const method = init?.method ?? 'GET';
 
     const oneEvent = /\/families\/[^/]+\/babies\/([^/]+)\/events\/([^/]+)$/.exec(url);
@@ -134,7 +178,7 @@ function stubApi(routes: Routes): void {
           ((id: string) => Promise.resolve(json({ event: event('event-new', id) }, 201)))
         )(babyId);
       }
-      return (routes.events ?? (() => Promise.resolve(json({ events: [] }))))(babyId);
+      return (routes.events ?? (() => Promise.resolve(json({ events: [] }))))(babyId, range);
     }
 
     if (url.endsWith('/babies')) {
@@ -159,13 +203,27 @@ function stubApi(routes: Routes): void {
   vi.stubGlobal('fetch', fetchMock);
 }
 
-/** Event *reads* so far, in order, as baby ids. */
-const requestedEventBabyIds = (): string[] =>
+/** Event *reads* so far, in order: which baby, and which day range was asked for. */
+const requestedEventReads = (): { babyId: string; from: string | null; to: string | null }[] =>
   fetchMock.mock.calls
     .filter((call) => ((call[1] as RequestInit | undefined)?.method ?? 'GET') === 'GET')
-    .map((call) => /\/babies\/([^/]+)\/events$/.exec(String(call[0])))
-    .filter((match): match is RegExpExecArray => match !== null)
-    .map((match) => match[1] ?? '');
+    .map((call) => {
+      const url = new URL(String(call[0]), 'http://localhost');
+      const match = /\/babies\/([^/]+)\/events$/.exec(url.pathname);
+      return match === null
+        ? null
+        : {
+            babyId: match[1] ?? '',
+            from: url.searchParams.get('from'),
+            to: url.searchParams.get('to'),
+          };
+    })
+    .filter(
+      (read): read is { babyId: string; from: string | null; to: string | null } => read !== null,
+    );
+
+/** Event *reads* so far, in order, as baby ids. */
+const requestedEventBabyIds = (): string[] => requestedEventReads().map((read) => read.babyId);
 
 /** The bodies of the family creations made so far, parsed. */
 const createdFamilyBodies = (): unknown[] =>
@@ -232,7 +290,36 @@ function setTime(input: HTMLInputElement, value: string): void {
   fireEvent.change(input, { target: { value } });
 }
 
-function renderToday(): void {
+/** The zone the machine running the suite is in — what a browser would report. */
+const BROWSER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+const signedInUser = (timezone: string): PublicUser => ({
+  id: 'user-1',
+  email: 'parent@example.com',
+  displayName: 'Parent',
+  locale: 'en',
+  timezone,
+  units: { weight: 'kg', length: 'cm', volume: 'ml' },
+  createdAt: '2026-08-01T09:00:00.000Z',
+});
+
+/**
+ * Today, in a zone, as the two instants the page asks the API for.
+ * Built from the shared helpers rather than restated, so the expectation is the
+ * contract and not a second implementation of it.
+ */
+function expectedDayRange(timeZone: string, now: Date = new Date()): { from: string; to: string } {
+  const { start, end } = localDayRange(toLocalDate(now, timeZone), timeZone);
+  return { from: start.toISOString(), to: end.toISOString() };
+}
+
+/**
+ * Renders the page as it is rendered in the app: inside an authenticated
+ * session, because Today reads the signed-in user's time zone to know which
+ * calendar day it is showing. The default is this machine's own zone, which is
+ * also what registration stores for a real account.
+ */
+function renderToday(options: { timezone?: string } = {}): void {
   const queryClient = new QueryClient({
     defaultOptions: {
       // No retries: an error must surface as an error, not as a long wait.
@@ -240,8 +327,20 @@ function renderToday(): void {
     },
   });
 
+  const auth: AuthContextValue = {
+    status: 'authenticated',
+    user: signedInUser(options.timezone ?? BROWSER_ZONE),
+    register: () => Promise.resolve(),
+    login: () => Promise.resolve(),
+    logout: () => Promise.resolve(),
+  };
+
   function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+    return (
+      <QueryClientProvider client={queryClient}>
+        <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>
+      </QueryClientProvider>
+    );
   }
 
   render(<TodayPage />, { wrapper: Wrapper });
@@ -249,7 +348,7 @@ function renderToday(): void {
 
 /** The events card, once it is on screen — everything above it has resolved. */
 async function eventsCard(): Promise<HTMLElement> {
-  const heading = await screen.findByRole('heading', { name: 'Recent events' });
+  const heading = await screen.findByRole('heading', { name: 'Today' });
   const section = heading.closest('section');
   if (section === null) {
     throw new Error('The events card heading is not inside a section');
@@ -377,6 +476,236 @@ describe('events', () => {
     await screen.findByText('Nappy');
     expect(screen.queryByText('Took the whole bottle')).toBeNull();
     expect(requestedEventBabyIds()).toEqual([ANI_ID, NARE_ID]);
+  });
+});
+
+describe('today’s day scope', () => {
+  /** An event of Ani's at an instant, whatever kind — the day is what is tested. */
+  const at = (id: string, startedAt: string, overrides: Partial<BabyEvent> = {}): BabyEvent =>
+    event(id, ANI_ID, { type: 'NOTE', startedAt, details: id, ...overrides });
+
+  it('asks for the current local calendar day of the selected baby', async () => {
+    stubApi({ events: dayScoped([at('today-noon', startedAtFor('12:00'))]) });
+    renderToday();
+
+    await screen.findByText('today-noon');
+
+    const reads = requestedEventReads();
+    expect(reads).toHaveLength(1);
+    expect(reads[0]?.babyId).toBe(ANI_ID);
+    // The exact boundaries the shared calendar helpers give for today — not a
+    // 24-hour window, and not the UTC day.
+    expect({ from: reads[0]?.from, to: reads[0]?.to }).toEqual(expectedDayRange(BROWSER_ZONE));
+  });
+
+  it('reads the day in the signed-in user’s time zone', async () => {
+    // A zone that is nowhere near the machine running the suite, so the range
+    // can only be right if it came from the user rather than from the browser.
+    const zone = 'Pacific/Kiritimati';
+    stubApi({ events: dayScoped([]) });
+    renderToday({ timezone: zone });
+
+    await screen.findByText('Nothing recorded yet.');
+
+    const [read] = requestedEventReads();
+    expect({ from: read?.from, to: read?.to }).toEqual(expectedDayRange(zone));
+  });
+
+  it('falls back to the browser’s zone when the stored one is not a real zone', async () => {
+    stubApi({ events: dayScoped([]) });
+    renderToday({ timezone: 'Middle/Earth' });
+
+    await screen.findByText('Nothing recorded yet.');
+
+    const [read] = requestedEventReads();
+    expect({ from: read?.from, to: read?.to }).toEqual(expectedDayRange(BROWSER_ZONE));
+  });
+
+  it('shows today’s events and neither yesterday’s nor tomorrow’s', async () => {
+    stubApi({
+      events: dayScoped([
+        at('yesterday-evening', startedAtFor('19:00', -1)),
+        at('today-morning', startedAtFor('08:00')),
+        at('today-evening', startedAtFor('21:00')),
+        at('tomorrow-morning', startedAtFor('08:00', 1)),
+      ]),
+    });
+    renderToday();
+
+    const card = await eventsCard();
+    await within(card).findByText('today-morning');
+
+    // Newest first, as before, and only the current day.
+    const rows = await eventRows();
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0] as HTMLElement).getByText('today-evening')).toBeDefined();
+    expect(within(rows[1] as HTMLElement).getByText('today-morning')).toBeDefined();
+    expect(screen.queryByText('yesterday-evening')).toBeNull();
+    expect(screen.queryByText('tomorrow-morning')).toBeNull();
+  });
+
+  it('includes an event at the first instant of the day and excludes one at the next', async () => {
+    const { from, to } = expectedDayRange(BROWSER_ZONE);
+    stubApi({ events: dayScoped([at('at-midnight', from), at('at-next-midnight', to)]) });
+    renderToday();
+
+    const card = await eventsCard();
+    await within(card).findByText('at-midnight');
+
+    // Half-open [from, to): midnight belongs to the day that begins, not to the
+    // one that ends, so consecutive days neither lose an event nor repeat one.
+    expect(await eventRows()).toHaveLength(1);
+    expect(screen.queryByText('at-next-midnight')).toBeNull();
+  });
+
+  it('shows the existing empty state when nothing was recorded today', async () => {
+    stubApi({ events: dayScoped([at('yesterday-only', startedAtFor('12:00', -1))]) });
+    renderToday();
+
+    const card = await eventsCard();
+    expect(await within(card).findByText('Nothing recorded yet.')).toBeDefined();
+    expect(within(card).queryByRole('listitem')).toBeNull();
+  });
+
+  it('re-scopes to the other twin’s current day when the tab is switched', async () => {
+    stubApi({
+      events: dayScoped([
+        at('ani-today', startedAtFor('09:00')),
+        event('nare-today', NARE_ID, {
+          type: 'DIAPER',
+          startedAt: startedAtFor('10:00'),
+          details: 'wet',
+        }),
+        event('nare-yesterday', NARE_ID, {
+          type: 'DIAPER',
+          startedAt: startedAtFor('10:00', -1),
+          details: 'dry',
+        }),
+      ]),
+    });
+    renderToday();
+
+    await screen.findByText('ani-today');
+    await userEvent.click(screen.getByRole('tab', { name: 'Nare' }));
+    await screen.findByText('Wet');
+
+    // One request per baby, each for that baby and for the same current day —
+    // so the two caches cannot collide and neither reads the other's events.
+    const reads = requestedEventReads();
+    expect(reads.map((read) => read.babyId)).toEqual([ANI_ID, NARE_ID]);
+    expect(new Set(reads.map((read) => `${read.from ?? ''}/${read.to ?? ''}`)).size).toBe(1);
+    expect(screen.queryByText('ani-today')).toBeNull();
+    // Yesterday's nappy stays out of the switched-to day as well.
+    expect(screen.queryByText('Dry')).toBeNull();
+  });
+
+  it('shows an event created today once the list is refetched', async () => {
+    const created: BabyEvent[] = [];
+    stubApi({
+      events: (babyId, range) => dayScoped(created)(babyId, range),
+      createEvent: (babyId) => {
+        const saved = event('event-new', babyId, {
+          type: 'NOTE',
+          startedAt: startedAtFor('12:00'),
+          details: 'Slept well',
+        });
+        created.push(saved);
+        return Promise.resolve(json({ event: saved }, 201));
+      },
+    });
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add note' }));
+    await userEvent.type(screen.getByLabelText('Note'), 'Slept well');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    // The invalidation after a save refreshes the day that is on screen, even
+    // though the mutation does not know which day that is.
+    expect(await screen.findByText('Slept well')).toBeDefined();
+    expect(requestedEventReads().length).toBeGreaterThan(1);
+    for (const read of requestedEventReads()) {
+      expect({ from: read.from, to: read.to }).toEqual(expectedDayRange(BROWSER_ZONE));
+    }
+  });
+
+  it('keeps the day scope when the list is refreshed after a delete', async () => {
+    const remaining: BabyEvent[] = [at('to-delete', startedAtFor('09:00'))];
+    stubApi({
+      events: (babyId, range) => dayScoped(remaining)(babyId, range),
+      deleteEvent: () => {
+        remaining.length = 0;
+        return Promise.resolve(new Response(null, { status: 204 }));
+      },
+    });
+    renderToday();
+
+    const row = await firstEventRow();
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete Note' }));
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('to-delete')).toBeNull();
+    });
+    for (const read of requestedEventReads()) {
+      expect({ from: read.from, to: read.to }).toEqual(expectedDayRange(BROWSER_ZONE));
+    }
+  });
+
+  describe('a sleep that crosses midnight (decision D5)', () => {
+    /** 23:00 yesterday to 01:00 today: one session, belonging to yesterday. */
+    const overnight: BabyEvent = event('overnight', ANI_ID, {
+      type: 'SLEEP',
+      startedAt: startedAtFor('23:00', -1),
+      endedAt: startedAtFor('01:00'),
+    });
+
+    it('is not in today’s list, even though it ended today', async () => {
+      stubApi({ events: dayScoped([overnight, at('today-morning', startedAtFor('08:00'))]) });
+      renderToday();
+
+      const card = await eventsCard();
+      await within(card).findByText('today-morning');
+
+      expect(await eventRows()).toHaveLength(1);
+      expect(within(card).queryByText('Sleep')).toBeNull();
+    });
+
+    it('belongs to the day it started on, and is not duplicated onto today', () => {
+      const today = toLocalDate(new Date(), BROWSER_ZONE);
+      const yesterday = localDayRange(addLocalDays(today, -1), BROWSER_ZONE);
+      const current = localDayRange(today, BROWSER_ZONE);
+      const started = Date.parse(overnight.startedAt);
+
+      expect(started).toBeGreaterThanOrEqual(yesterday.start.getTime());
+      expect(started).toBeLessThan(yesterday.end.getTime());
+      expect(started).toBeLessThan(current.start.getTime());
+    });
+
+    it('is shown with its stored times and its real duration when its day is listed', async () => {
+      // Yesterday's list, answered by the same rule the API follows.
+      stubApi({
+        events: (babyId) =>
+          dayScoped([overnight])(babyId, {
+            from: localDayRange(
+              addLocalDays(toLocalDate(new Date(), BROWSER_ZONE), -1),
+              BROWSER_ZONE,
+            ).start.toISOString(),
+            to: localDayRange(
+              addLocalDays(toLocalDate(new Date(), BROWSER_ZONE), -1),
+              BROWSER_ZONE,
+            ).end.toISOString(),
+          }),
+      });
+      renderToday();
+
+      const row = await firstEventRow();
+      expect(within(row).getByText('Sleep')).toBeDefined();
+      expect(within(row).getByText('2h 0m')).toBeDefined();
+      expect(row.querySelector('time')?.getAttribute('datetime')).toBe(overnight.startedAt);
+      // Nothing was rewritten to make it fit a day.
+      expect(patchedEvents()).toEqual([]);
+      expect(overnight.endedAt).toBe(startedAtFor('01:00'));
+    });
   });
 });
 

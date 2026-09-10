@@ -28,9 +28,18 @@ export const create: RequestHandler = async (req, res) => {
   res.status(201).json({ event } satisfies BabyEventResponse);
 };
 
+/**
+ * The whole validated query goes to the service — the limit, and the optional
+ * day range with it. The family and the baby still come from the resolved
+ * scopes, never from the query string: a range narrows what a caller may see,
+ * it does not widen it.
+ */
 export const list: RequestHandler = async (req, res) => {
-  const { limit } = validatedQuery<ListBabyEventsQuery>(res);
-  const events = await eventService.listEvents(getFamilyScope(req), getBabyScope(req), limit);
+  const events = await eventService.listEvents(
+    getFamilyScope(req),
+    getBabyScope(req),
+    validatedQuery<ListBabyEventsQuery>(res),
+  );
 
   res.status(200).json({ events } satisfies BabyEventListResponse);
 };
