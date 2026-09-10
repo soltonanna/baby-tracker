@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { DIAPER_KINDS, type BabyEvent, type DiaperKind } from '@baby-tracker/shared';
+import { DIAPER_KINDS, type Baby, type BabyEvent, type DiaperKind } from '@baby-tracker/shared';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { TextField } from '../../components/ui/TextField.js';
-import { queryKeys } from '../../services/queryKeys.js';
 import { saveBabyEvent } from './api.js';
+import { EventTargetField } from './EventTargetField.js';
+import { babyTarget, refreshEventsFor, targetBabyIds, type EventTarget } from './eventTarget.js';
 import { startedAtFrom, timeInputValue } from './eventTime.js';
 
 /**
@@ -46,7 +47,10 @@ const diaperKindOf = (details: string | undefined): DiaperKind =>
 
 export interface DiaperFormProps {
   familyId: string;
+  /** The baby on screen — the default target, and the only one an edit has. */
   babyId: string;
+  /** Every baby in the family, so the entry can be aimed at one or at both. */
+  babies: Baby[];
   /** The nappy change being edited, if this is an edit rather than a new entry. */
   event?: BabyEvent | undefined;
   /** Called once the nappy change is saved and the event list has been refreshed. */
@@ -54,7 +58,14 @@ export interface DiaperFormProps {
   onCancel: () => void;
 }
 
-export function DiaperForm({ familyId, babyId, event, onSaved, onCancel }: DiaperFormProps) {
+export function DiaperForm({
+  familyId,
+  babyId,
+  babies,
+  event,
+  onSaved,
+  onCancel,
+}: DiaperFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
@@ -66,21 +77,26 @@ export function DiaperForm({ familyId, babyId, event, onSaved, onCancel }: Diape
     timeInputValue(event === undefined ? new Date() : new Date(event.startedAt)),
   );
   const [kind, setKind] = useState<DiaperKind>(() => diaperKindOf(event?.details));
+  const [target, setTarget] = useState<EventTarget>(() => babyTarget(babyId));
   const [timeError, setTimeError] = useState<string | undefined>(undefined);
+
+  // An edit belongs to the event's own baby, so the target is not a choice
+  // there: moving a nappy change to the other twin is not editing it.
+  const saveTarget = editing ? babyTarget(babyId) : target;
 
   const save = useMutation({
     mutationFn: (payload: { startedAt: string; kind: DiaperKind }) =>
-      saveBabyEvent(familyId, babyId, event?.id, {
+      saveBabyEvent(familyId, saveTarget, event?.id, {
         type: 'DIAPER',
         startedAt: payload.startedAt,
         details: payload.kind,
       }),
     onSuccess: async () => {
       // Awaited, so the form is still in its saving state until the list the
-      // parent is about to look at actually holds the new event.
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.babyEvents(familyId, babyId),
-      });
+      // parent is about to look at actually holds the new event. For "both"
+      // that is each twin's list: the one on screen refreshes now, the other
+      // the moment it is shown.
+      await refreshEventsFor(queryClient, familyId, targetBabyIds(saveTarget, babies));
       onSaved();
     },
   });
@@ -111,6 +127,15 @@ export function DiaperForm({ familyId, babyId, event, onSaved, onCancel }: Diape
             {editing ? t('today.diaper.errors.updateFailed') : t('today.diaper.errors.saveFailed')}
           </p>
         ) : null}
+
+        {editing ? null : (
+          <EventTargetField
+            babies={babies}
+            value={target}
+            onChange={setTarget}
+            disabled={save.isPending}
+          />
+        )}
 
         <TextField
           label={t('today.diaper.time')}

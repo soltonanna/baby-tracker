@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { Types } from 'mongoose';
 import {
@@ -19,6 +19,9 @@ const app = createApp();
 const authUrl = (path: string): string => `${API_PREFIX}/auth${path}`;
 const eventsUrl = (familyId: string, babyId: string): string =>
   `${API_PREFIX}/families/${familyId}/babies/${babyId}/events`;
+/** Where one action for both babies is recorded — a family resource, not a baby's. */
+const eventGroupsUrl = (familyId: string): string =>
+  `${API_PREFIX}/families/${familyId}/event-groups`;
 
 interface Account {
   bearer: string;
@@ -1072,5 +1075,440 @@ describe('DELETE .../events/:eventId', () => {
 
     expect(response.status).toBe(401);
     expect(await BabyEvent.findById(event.id)).not.toBeNull();
+  });
+});
+
+/**
+ * One action recorded for both babies.
+ *
+ * The endpoint is family-scoped and writes two ordinary events (decision D2), so
+ * these tests check three separate things and keep them apart: that the two
+ * documents really are the same entry twice, that the pair is written
+ * atomically, and that "both" can never mean anyone else's children.
+ */
+describe('POST .../event-groups', () => {
+  const startedAt = '2026-09-04T10:00:00.000Z';
+
+  /** A family with the two babies "both" is for. */
+  async function withTwins(): Promise<Parent & { twinBId: string }> {
+    const parent = await withBaby('Twin A');
+    const twinBId = await addSibling(parent, 'Twin B');
+    return { ...parent, twinBId };
+  }
+
+  const addBothEvent = (parent: Parent, body: unknown, bearer: string = parent.bearer) =>
+    request(app).post(eventGroupsUrl(parent.familyId)).set('Authorization', bearer).send(body);
+
+  /** The two events of a group, as stored, ordered the way the API answered. */
+  const storedGroup = async (body: { group: { events: { id: string }[] } }) =>
+    Promise.all(body.group.events.map((event) => BabyEvent.findById(event.id)));
+
+  describe('what it writes', () => {
+    it('creates exactly two events, one for each baby', async () => {
+      const parent = await withTwins();
+
+      const response = await addBothEvent(parent, { type: 'FEEDING', startedAt, amount: 120 });
+
+      expect(response.status).toBe(201);
+      expect(response.body.group.events).toHaveLength(2);
+      expect(await BabyEvent.countDocuments({})).toBe(2);
+
+      const babyIds = (response.body.group.events as { babyId: string }[]).map(
+        (event) => event.babyId,
+      );
+      // Two different babies, and both of them this family's.
+      expect(new Set(babyIds).size).toBe(2);
+      expect([...babyIds].sort()).toEqual([parent.babyId, parent.twinBId].sort());
+    });
+
+    it('scopes both events to the caller’s family', async () => {
+      const parent = await withTwins();
+
+      const response = await addBothEvent(parent, { type: 'NOTE', startedAt, details: 'Both fed' });
+
+      for (const event of response.body.group.events as { familyId: string }[]) {
+        expect(event.familyId).toBe(parent.familyId);
+      }
+      expect(await BabyEvent.countDocuments({ familyId: parent.familyId })).toBe(2);
+    });
+
+    it('gives both events one server-generated groupId', async () => {
+      const parent = await withTwins();
+
+      const response = await addBothEvent(parent, { type: 'DIAPER', startedAt, details: 'wet' });
+      const { groupId, events } = response.body.group as {
+        groupId: string;
+        events: { groupId?: string }[];
+      };
+
+      expect(typeof groupId).toBe('string');
+      expect(groupId.length).toBeGreaterThan(0);
+      for (const event of events) {
+        expect(event.groupId).toBe(groupId);
+      }
+      expect(await BabyEvent.countDocuments({ groupId })).toBe(2);
+    });
+
+    it('gives each action its own groupId', async () => {
+      const parent = await withTwins();
+
+      const first = await addBothEvent(parent, { type: 'NOTE', startedAt, details: 'One' });
+      const second = await addBothEvent(parent, { type: 'NOTE', startedAt, details: 'Two' });
+
+      // A group links the events of *one* action, and nothing wider.
+      expect(first.body.group.groupId).not.toBe(second.body.group.groupId);
+      expect(await BabyEvent.countDocuments({ groupId: first.body.group.groupId as string })).toBe(
+        2,
+      );
+    });
+
+    it('ignores a groupId the client sent, rather than grouping by it', async () => {
+      const parent = await withTwins();
+
+      const response = await addBothEvent(parent, {
+        type: 'FEEDING',
+        startedAt,
+        amount: 90,
+        groupId: 'chosen-by-the-client',
+      });
+
+      expect(response.status).toBe(201);
+      expect(response.body.group.groupId).not.toBe('chosen-by-the-client');
+      for (const event of response.body.group.events as { groupId?: string }[]) {
+        expect(event.groupId).toBe(response.body.group.groupId);
+      }
+      // Nothing was written under the client's value, so it cannot be used to
+      // join this action to another one.
+      expect(await BabyEvent.countDocuments({ groupId: 'chosen-by-the-client' })).toBe(0);
+    });
+
+    it('writes the same event data to both babies', async () => {
+      const parent = await withTwins();
+
+      const response = await addBothEvent(parent, {
+        type: 'FEEDING',
+        startedAt,
+        endedAt: '2026-09-04T10:15:00.000Z',
+        amount: 120,
+        unit: 'ml',
+        details: 'Same bottle each',
+      });
+
+      const [first, second] = await storedGroup(response.body);
+      expect(first).not.toBeNull();
+      expect(second).not.toBeNull();
+
+      // Everything except who it belongs to and which document it is.
+      for (const stored of [first, second]) {
+        expect(stored?.type).toBe('FEEDING');
+        expect(stored?.startedAt.toISOString()).toBe(startedAt);
+        expect(stored?.endedAt?.toISOString()).toBe('2026-09-04T10:15:00.000Z');
+        expect(stored?.amount).toBe(120);
+        expect(stored?.unit).toBe('ml');
+        expect(stored?.details).toBe('Same bottle each');
+      }
+      expect(first?.babyId.toString()).not.toBe(second?.babyId.toString());
+      expect(first?._id.toString()).not.toBe(second?._id.toString());
+    });
+
+    it('stores a feeding in canonical millilitres, for each baby (decision D3)', async () => {
+      const parent = await withTwins();
+      // The conversion happens at the UI edge; what reaches the API is already ml.
+      const amount = volumeToMl(4, 'oz');
+
+      const response = await addBothEvent(parent, {
+        type: 'FEEDING',
+        startedAt,
+        amount,
+        unit: 'ml',
+      });
+
+      for (const stored of await storedGroup(response.body)) {
+        expect(stored?.amount).toBe(amount);
+        expect(stored?.unit).toBe('ml');
+      }
+    });
+
+    it('keeps a sleep’s start and end exactly as given, for each baby', async () => {
+      const parent = await withTwins();
+
+      const response = await addBothEvent(parent, {
+        type: 'SLEEP',
+        startedAt: '2026-09-04T13:00:00.000Z',
+        endedAt: '2026-09-04T14:10:00.000Z',
+      });
+
+      for (const stored of await storedGroup(response.body)) {
+        expect(stored?.startedAt.toISOString()).toBe('2026-09-04T13:00:00.000Z');
+        expect(stored?.endedAt?.toISOString()).toBe('2026-09-04T14:10:00.000Z');
+        expect(durationSeconds(stored?.startedAt as Date, stored?.endedAt as Date)).toBe(70 * 60);
+      }
+    });
+
+    it('records a sleep that crossed midnight as one session for each baby (D5)', async () => {
+      const parent = await withTwins();
+      const zone = 'Asia/Yerevan';
+      const evening = localDayStart(toLocalDate(new Date('2026-09-04T12:00:00.000Z'), zone), zone);
+      const sleepStart = new Date(evening.getTime() + 23 * 60 * 60 * 1000);
+      const sleepEnd = new Date(sleepStart.getTime() + 2 * 60 * 60 * 1000);
+
+      const response = await addBothEvent(parent, {
+        type: 'SLEEP',
+        startedAt: sleepStart.toISOString(),
+        endedAt: sleepEnd.toISOString(),
+      });
+
+      const { start, end } = localDayRange(toLocalDate(sleepStart, zone), zone);
+      const nextDay = localDayRange(addLocalDays(toLocalDate(sleepStart, zone), 1), zone);
+
+      for (const stored of await storedGroup(response.body)) {
+        // One session, on the evening it began, for each baby alike: the API
+        // stores the two instants and the day scoping matches on the start.
+        expect(stored?.startedAt.getTime()).toBeGreaterThanOrEqual(start.getTime());
+        expect(stored?.startedAt.getTime()).toBeLessThan(end.getTime());
+        expect(stored?.endedAt?.getTime()).toBeGreaterThanOrEqual(nextDay.start.getTime());
+        expect(overlapSeconds(stored?.startedAt as Date, stored?.endedAt as Date, start, end)).toBe(
+          60 * 60,
+        );
+      }
+
+      // And each baby's own day lists it once, not twice.
+      for (const babyId of [parent.babyId, parent.twinBId]) {
+        const listed = await request(app)
+          .get(eventsUrl(parent.familyId, babyId))
+          .query({ from: start.toISOString(), to: end.toISOString() })
+          .set('Authorization', parent.bearer);
+        expect(listed.status).toBe(200);
+        expect(listed.body.events).toHaveLength(1);
+      }
+    });
+
+    it('stores the canonical nappy kind for each baby', async () => {
+      const parent = await withTwins();
+
+      const response = await addBothEvent(parent, {
+        type: 'DIAPER',
+        startedAt,
+        details: 'wet_and_dirty',
+      });
+
+      for (const stored of await storedGroup(response.body)) {
+        expect(stored?.type).toBe('DIAPER');
+        expect(stored?.details).toBe('wet_and_dirty');
+      }
+    });
+
+    it('stores a note’s text for each baby', async () => {
+      const parent = await withTwins();
+
+      const response = await addBothEvent(parent, {
+        type: 'NOTE',
+        startedAt,
+        details: 'Both had a quiet morning',
+      });
+
+      for (const stored of await storedGroup(response.body)) {
+        expect(stored?.type).toBe('NOTE');
+        expect(stored?.details).toBe('Both had a quiet morning');
+      }
+    });
+
+    it('holds the body to the same rules a single create is held to', async () => {
+      const parent = await withTwins();
+
+      for (const body of [
+        { type: 'SOMETHING_ELSE', startedAt },
+        { type: 'NOTE' },
+        { type: 'NOTE', startedAt: 'not-a-date' },
+        { type: 'FEEDING', startedAt, amount: -1 },
+        { type: 'NOTE', startedAt, details: 'x'.repeat(1001) },
+        { type: 'FEEDING', startedAt, unit: '' },
+      ]) {
+        const response = await addBothEvent(parent, body);
+        expect(response.status, JSON.stringify(body)).toBe(422);
+      }
+      expect(await BabyEvent.countDocuments({})).toBe(0);
+    });
+
+    it('appears in each baby’s own list as an ordinary event', async () => {
+      const parent = await withTwins();
+
+      await addBothEvent(parent, { type: 'FEEDING', startedAt, amount: 120, unit: 'ml' });
+
+      for (const babyId of [parent.babyId, parent.twinBId]) {
+        const listed = await request(app)
+          .get(eventsUrl(parent.familyId, babyId))
+          .set('Authorization', parent.bearer);
+
+        expect(listed.status).toBe(200);
+        expect(listed.body.events).toHaveLength(1);
+        expect(listed.body.events[0]).toMatchObject({ type: 'FEEDING', amount: 120, babyId });
+      }
+    });
+  });
+
+  describe('which babies it may write to', () => {
+    it('refuses a family that does not have two babies, and writes nothing', async () => {
+      const only = await withBaby('Only child');
+
+      const response = await addBothEvent(only, { type: 'NOTE', startedAt, details: 'Both' });
+
+      // 409, not 404 or 422: the caller is a member so the family is no secret
+      // from them, and the body is fine — it is the family's state that is not
+      // ready, and adding the second baby makes the same request succeed.
+      expect(response.status).toBe(409);
+      expect(await BabyEvent.countDocuments({})).toBe(0);
+
+      await addSibling(only, 'Second');
+      const retried = await addBothEvent(only, { type: 'NOTE', startedAt, details: 'Both' });
+      expect(retried.status).toBe(201);
+    });
+
+    it('refuses a family with no babies at all', async () => {
+      const account = await signUp();
+      const family = await request(app)
+        .post(`${API_PREFIX}/families`)
+        .set('Authorization', account.bearer)
+        .send({ name: 'Empty' });
+
+      const response = await request(app)
+        .post(eventGroupsUrl(family.body.family.id as string))
+        .set('Authorization', account.bearer)
+        .send({ type: 'NOTE', startedAt, details: 'Both' });
+
+      expect(response.status).toBe(409);
+      expect(await BabyEvent.countDocuments({})).toBe(0);
+    });
+
+    it('refuses a family with more than two babies rather than guessing which two', async () => {
+      const parent = await withTwins();
+      await addSibling(parent, 'Third');
+
+      const response = await addBothEvent(parent, { type: 'NOTE', startedAt, details: 'Both' });
+
+      expect(response.status).toBe(409);
+      expect(await BabyEvent.countDocuments({})).toBe(0);
+    });
+
+    it('cannot be aimed at another family’s babies through the body', async () => {
+      const parent = await withTwins();
+      const stranger = await withTwins();
+
+      const response = await addBothEvent(parent, {
+        type: 'NOTE',
+        startedAt,
+        details: 'Both',
+        familyId: stranger.familyId,
+        babyId: stranger.babyId,
+        babyIds: [stranger.babyId, stranger.twinBId],
+      });
+
+      expect(response.status).toBe(201);
+      // The body decided nothing: the events belong to the caller's own family.
+      const babyIds = (response.body.group.events as { babyId: string }[]).map((e) => e.babyId);
+      expect([...babyIds].sort()).toEqual([parent.babyId, parent.twinBId].sort());
+      expect(await BabyEvent.countDocuments({ familyId: stranger.familyId })).toBe(0);
+    });
+
+    it('cannot be aimed at another family through the path', async () => {
+      const parent = await withTwins();
+      const stranger = await withTwins();
+
+      const response = await request(app)
+        .post(eventGroupsUrl(stranger.familyId))
+        .set('Authorization', parent.bearer)
+        .send({ type: 'NOTE', startedAt, details: 'Both' });
+
+      // 404 rather than 403: a family the caller is not in does not exist as far
+      // as they are concerned, the same answer every other family route gives.
+      expect(response.status).toBe(404);
+      expect(await BabyEvent.countDocuments({})).toBe(0);
+    });
+
+    it('leaves a sibling family’s events untouched', async () => {
+      const parent = await withTwins();
+      const neighbour = await withTwins();
+
+      await addBothEvent(parent, { type: 'NOTE', startedAt, details: 'Ours' });
+
+      expect(await BabyEvent.countDocuments({ familyId: parent.familyId })).toBe(2);
+      expect(await BabyEvent.countDocuments({ familyId: neighbour.familyId })).toBe(0);
+    });
+  });
+
+  describe('who may call it', () => {
+    it('rejects an unauthenticated request', async () => {
+      const parent = await withTwins();
+
+      const response = await request(app)
+        .post(eventGroupsUrl(parent.familyId))
+        .send({ type: 'NOTE', startedAt, details: 'Both' });
+
+      expect(response.status).toBe(401);
+      expect(await BabyEvent.countDocuments({})).toBe(0);
+    });
+
+    it('rejects a signed-in stranger', async () => {
+      const parent = await withTwins();
+      const stranger = await signUp();
+
+      const response = await addBothEvent(
+        parent,
+        { type: 'NOTE', startedAt, details: 'Both' },
+        stranger.bearer,
+      );
+
+      expect(response.status).toBe(404);
+      expect(await BabyEvent.countDocuments({})).toBe(0);
+    });
+
+    it('allows any member of the family, not only its owner', async () => {
+      const parent = await withTwins();
+      const member = await addMember(parent);
+
+      const response = await addBothEvent(
+        parent,
+        { type: 'NOTE', startedAt, details: 'Both' },
+        member.bearer,
+      );
+
+      expect(response.status).toBe(201);
+      expect(await BabyEvent.countDocuments({})).toBe(2);
+    });
+  });
+
+  describe('atomicity', () => {
+    it('leaves nothing behind when the second write fails', async () => {
+      const parent = await withTwins();
+
+      // The first insert really happens, inside the transaction; the second is
+      // made to fail. Nothing here weakens the transaction — it is the rollback
+      // itself that has to remove the write that already succeeded, which a
+      // compensating delete could not promise if the process died instead.
+      const realCreate = BabyEvent.create.bind(BabyEvent) as (
+        ...args: unknown[]
+      ) => Promise<unknown>;
+      let writes = 0;
+      const create = vi.spyOn(BabyEvent, 'create').mockImplementation(((...args: unknown[]) => {
+        writes += 1;
+        return writes === 1
+          ? realCreate(...args)
+          : Promise.reject(new Error('simulated failure inside the twin transaction'));
+      }) as unknown as typeof BabyEvent.create);
+
+      try {
+        const response = await addBothEvent(parent, { type: 'FEEDING', startedAt, amount: 120 });
+        expect(response.status).toBe(500);
+      } finally {
+        create.mockRestore();
+      }
+
+      expect(writes).toBe(2);
+      // Not one, not a half-written pair: neither baby has an event.
+      expect(await BabyEvent.countDocuments({})).toBe(0);
+      for (const babyId of [parent.babyId, parent.twinBId]) {
+        expect(await BabyEvent.countDocuments({ babyId })).toBe(0);
+      }
+    });
   });
 });

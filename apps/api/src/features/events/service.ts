@@ -1,13 +1,21 @@
-import { Types, type QueryFilter } from 'mongoose';
+import { randomUUID } from 'node:crypto';
+import mongoose, { Types, type QueryFilter } from 'mongoose';
 import {
   babyEventFieldsSchemaFor,
   type BabyEvent as BabyEventDto,
+  type BabyEventData,
+  type BabyEventGroup,
   type CreateBabyEventInput,
   type ListBabyEventsQuery,
   type UpdateBabyEventInput,
 } from '@baby-tracker/shared';
-import { BabyEvent, type BabyEventAttributes } from '../../models/BabyEvent.js';
-import { notFound, unprocessable } from '../../lib/httpError.js';
+import { Baby } from '../../models/Baby.js';
+import {
+  BabyEvent,
+  type BabyEventAttributes,
+  type BabyEventDocument,
+} from '../../models/BabyEvent.js';
+import { conflict, notFound, unprocessable } from '../../lib/httpError.js';
 import type { FamilyScope } from '../../middleware/familyAccess.js';
 import type { BabyScope } from '../../middleware/babyAccess.js';
 import { toBabyEvent } from './mappers.js';
@@ -41,6 +49,28 @@ function scopedEventFilter(
   return { _id: eventId, familyId: family.familyId, babyId: baby.babyId };
 }
 
+/**
+ * The event's own fields, as they are stored.
+ *
+ * One function rather than one spread per call site, so that a single-baby
+ * entry and each half of a twin entry are written from the same description of
+ * what an event is: “the same event for both babies” is then true by
+ * construction rather than by two lists being kept in step.
+ *
+ * An absent optional field is left out entirely rather than stored as
+ * `undefined`, so an event never carries a key it has no value for.
+ */
+function eventFieldsOf(input: BabyEventData): Partial<BabyEventAttributes> {
+  return {
+    type: input.type,
+    startedAt: input.startedAt,
+    ...(input.endedAt ? { endedAt: input.endedAt } : {}),
+    ...(input.amount === undefined ? {} : { amount: input.amount }),
+    ...(input.unit ? { unit: input.unit } : {}),
+    ...(input.details ? { details: input.details } : {}),
+  };
+}
+
 export async function createEvent(
   family: FamilyScope,
   baby: BabyScope,
@@ -49,19 +79,88 @@ export async function createEvent(
   const event = await BabyEvent.create({
     familyId: family.familyId,
     babyId: baby.babyId,
-    type: input.type,
-    startedAt: input.startedAt,
-    ...(input.endedAt ? { endedAt: input.endedAt } : {}),
-    ...(input.amount === undefined ? {} : { amount: input.amount }),
-    ...(input.unit ? { unit: input.unit } : {}),
-    ...(input.details ? { details: input.details } : {}),
-    // Accepted from the caller because it groups rather than grants: two events
-    // created by one action carry the same value. A future twin endpoint will
-    // generate it server-side instead.
+    ...eventFieldsOf(input),
+    // Accepted from the caller because it groups rather than grants. The
+    // both-babies endpoint below does not take it from anyone: there the server
+    // generates it, so a client can never point one action's documents at
+    // another action's group.
     ...(input.groupId ? { groupId: input.groupId } : {}),
   });
 
   return toBabyEvent(event);
+}
+
+/**
+ * Records one action for both babies: **two ordinary events, one per baby,
+ * sharing a `groupId` the server generates** (decision D2).
+ *
+ * Not a third kind of event and not a third baby. Nothing downstream has to
+ * know a group exists — each document is an ordinary event on its own baby, so
+ * every per-baby list, index and future aggregation stays exactly as it was,
+ * and editing or deleting one of them cannot touch the other.
+ *
+ * **Which babies.** They are read from the family the caller's membership was
+ * resolved against, never named by the request: there is no body field that
+ * could point at a baby, so “both” cannot be aimed at somebody else's child.
+ * Exactly two are required. A family with one baby has nothing to record for
+ * both, and a family with three does not say which two are meant — that is a
+ * product question this stage does not answer, so it is refused rather than
+ * guessed at. `409`, not `422` or `404`: the request is well formed and the
+ * caller is a member, so the family is no secret from them; what is wrong is
+ * the family's current state, and adding the second baby makes the same request
+ * succeed.
+ *
+ * **Atomicity.** The two inserts run in one MongoDB transaction, on the replica
+ * set `docker-compose.yml` provides. A compensating write — insert, insert,
+ * delete the first if the second fails — would leave one baby holding a feeding
+ * the other never got if the process died in between, and unlike the memberless
+ * family in `families/service.ts` that residue would be *visible*: a parent
+ * would read it as a real entry. This is the case decision D21 said transactions
+ * were worth adopting for.
+ */
+export async function createEventForBothBabies(
+  family: FamilyScope,
+  input: BabyEventData,
+): Promise<BabyEventGroup> {
+  // Read before the transaction, and in the same order the tracker lists them,
+  // so the two documents are written for the two babies the parent sees.
+  const babies = await Baby.find({ familyId: family.familyId }).sort({ createdAt: 1 }).lean();
+
+  if (babies.length !== 2) {
+    throw conflict('This family does not have two babies to record an entry for');
+  }
+
+  const groupId = randomUUID();
+  const fields = eventFieldsOf(input);
+  const session = await mongoose.startSession();
+  let created: BabyEventDocument[] = [];
+
+  try {
+    await session.withTransaction(async () => {
+      // Reset inside the callback, not outside: `withTransaction` may run it
+      // again after a transient error, and a second run must not append to the
+      // first run's results.
+      created = [];
+
+      for (const baby of babies) {
+        const [event] = await BabyEvent.create(
+          [{ familyId: family.familyId, babyId: baby._id, ...fields, groupId }],
+          { session },
+        );
+        if (!event) {
+          // Unreachable: `create` with one document answers with one document.
+          // Stated so that a failure here aborts the transaction rather than
+          // committing a half-built group.
+          throw new Error('The database did not return the event it was asked to create');
+        }
+        created.push(event);
+      }
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  return { groupId, events: created.map(toBabyEvent) };
 }
 
 /**

@@ -22,7 +22,23 @@ export const eventUnitSchema = z.string().trim().min(1).max(16);
  */
 export const eventGroupIdSchema = z.string().trim().min(1).max(64);
 
-export const createBabyEventSchema = z.object({
+/**
+ * The event itself, and nothing about whose it is.
+ *
+ * `familyId` and `babyId` are deliberately absent: identity comes from the
+ * route's resolved scopes, so a body can never say which baby an entry belongs
+ * to. `groupId` is absent for the same reason — it is grouping identity, which
+ * the server decides.
+ *
+ * This is the one place the value rules live, and the three operations that
+ * need them are all derived from it rather than restating it:
+ *
+ *   - a single-baby create is this plus an optional `groupId`;
+ *   - an edit is this, partial;
+ *   - a both-babies create is exactly this, because the two babies and the
+ *     `groupId` are both resolved by the server.
+ */
+export const babyEventDataSchema = z.object({
   type: z.enum(BABY_EVENT_TYPES),
   startedAt: z.coerce.date(),
   endedAt: z.coerce.date().optional(),
@@ -31,22 +47,35 @@ export const createBabyEventSchema = z.object({
   amount: z.number().nonnegative().optional(),
   unit: eventUnitSchema.optional(),
   details: eventDetailsSchema.optional(),
+});
+
+/**
+ * What a create for one baby accepts.
+ *
+ * `groupId` is still accepted here, because it groups rather than grants and
+ * the endpoint has taken it since the first tracker stage. The both-babies
+ * endpoint does not accept it: there the server generates it, so that two
+ * documents written by one action can never be told they belong to somebody
+ * else's group.
+ */
+export const createBabyEventSchema = babyEventDataSchema.extend({
   groupId: eventGroupIdSchema.optional(),
 });
 
 /**
  * What an edit may change.
  *
- * Derived from the create schema rather than restated, so every rule — the
+ * Derived from the shared event data rather than restated, so every rule — the
  * non-negative amount, the 1000-character note, the date coercion — has exactly
  * one definition and an edit can never be checked more loosely than the create
  * that produced the event.
  *
- * Two fields are deliberately not editable:
+ * Three fields are deliberately not editable, and none of them is in
+ * `babyEventDataSchema` to begin with:
  *
- *  - `groupId` is omitted. It links the two documents of one twin action: an
- *    identity, not a value a parent types. Re-pointing it would silently move an
- *    event between groups, and "change both" is its own opt-in endpoint
+ *  - `groupId` links the two documents of one twin action: an identity the
+ *    server assigns, not a value a parent types. Re-pointing it would silently
+ *    move an event between groups, and "change both" is its own opt-in endpoint
  *    (ARCHITECTURE_PROPOSAL.md §5.5).
  *  - `familyId` and `babyId` were never in the body at all. Unknown keys are
  *    stripped, so sending them is not an error — it simply changes nothing.
@@ -58,8 +87,7 @@ export const createBabyEventSchema = z.object({
  * At least one real field must be present. A patch that would change nothing is
  * a client mistake, and answering 200 to it would hide that.
  */
-export const updateBabyEventSchema = createBabyEventSchema
-  .omit({ groupId: true })
+export const updateBabyEventSchema = babyEventDataSchema
   .partial()
   .refine((patch) => Object.keys(patch).some((field) => field !== 'type'), {
     message: 'An update must change at least one field',
@@ -121,6 +149,7 @@ export const listBabyEventsQuerySchema = z
     path: ['from'],
   });
 
+export type BabyEventData = z.infer<typeof babyEventDataSchema>;
 export type CreateBabyEventInput = z.infer<typeof createBabyEventSchema>;
 export type UpdateBabyEventInput = z.infer<typeof updateBabyEventSchema>;
 export type ListBabyEventsQuery = z.infer<typeof listBabyEventsQuerySchema>;

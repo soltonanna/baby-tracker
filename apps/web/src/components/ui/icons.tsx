@@ -3,9 +3,9 @@ import type { ReactNode, SVGProps } from 'react';
 /**
  * The app's icons, drawn inline.
  *
- * No icon package: six small line drawings do not justify a dependency, and an
- * inline `<svg>` inherits `currentColor`, so an icon is coloured by the text it
- * sits beside rather than by a second palette.
+ * No icon package: a handful of small line drawings do not justify a
+ * dependency, and an inline `<svg>` inherits `currentColor`, so an icon is
+ * coloured by the text it sits beside rather than by a second palette.
  *
  * Every icon is decorative by default — `aria-hidden`, and never the only way to
  * read a row or a button. A button that shows nothing but an icon carries its
@@ -81,6 +81,15 @@ export function NoteIcon(props: IconProps) {
       <path d="M6.5 3.25h7.7L19 8v12.75H6.5Z" />
       <path d="M14 3.25V8h5" />
       <path d="M9.2 12.5h6.1M9.2 16h4.2" />
+    </Icon>
+  );
+}
+
+/** A tick, for the option that is currently chosen. */
+export function CheckIcon(props: IconProps) {
+  return (
+    <Icon name="check" {...props}>
+      <path d="M5 12.5 9.5 17 19 7.5" />
     </Icon>
   );
 }

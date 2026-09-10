@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Baby, BabyEvent, FamilyWithRole, PublicUser } from '@baby-tracker/shared';
-import { addLocalDays, localDayRange, toLocalDate } from '@baby-tracker/shared';
+import { addLocalDays, localDayRange, toLocalDate, volumeToMl } from '@baby-tracker/shared';
 import { resetSession } from '../../services/session.js';
 import { resetRefreshState } from '../../services/apiClient.js';
 import { AuthContext, type AuthContextValue } from '../auth/AuthContext.js';
@@ -68,6 +68,19 @@ const overnightSleep: BabyEvent = event('event-ani-3', ANI_ID, {
 
 const nareEvents: BabyEvent[] = [event('event-nare-1', NARE_ID, { type: 'DIAPER' })];
 
+/**
+ * What the API answers a both-babies create with: the two ordinary events it
+ * wrote, and the id the server generated to link them. One per baby, never one
+ * document naming two babies (decision D2).
+ */
+const bothEvent = (overrides: Partial<BabyEvent> = {}, groupId = 'group-1') => ({
+  groupId,
+  events: [
+    event('event-both-ani', ANI_ID, { ...overrides, groupId }),
+    event('event-both-nare', NARE_ID, { ...overrides, groupId }),
+  ],
+});
+
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
@@ -123,6 +136,8 @@ interface Routes {
   events?: (babyId: string, range: RequestedRange) => Promise<Response>;
   /** POST to the same path as `events`. */
   createEvent?: (babyId: string) => Promise<Response>;
+  /** POST to the family's event-groups path: one entry for both babies. */
+  createEventGroup?: () => Promise<Response>;
   /** PATCH on one event. */
   updateEvent?: (babyId: string, eventId: string) => Promise<Response>;
   /** DELETE on one event. */
@@ -179,6 +194,12 @@ function stubApi(routes: Routes): void {
         )(babyId);
       }
       return (routes.events ?? (() => Promise.resolve(json({ events: [] }))))(babyId, range);
+    }
+
+    if (url.endsWith('/event-groups') && method === 'POST') {
+      return (
+        routes.createEventGroup ?? (() => Promise.resolve(json({ group: bothEvent() }, 201)))
+      )();
     }
 
     if (url.endsWith('/babies')) {
@@ -250,6 +271,39 @@ const createdEventBodies = (): unknown[] =>
   fetchMock.mock.calls
     .filter((call) => (call[1] as RequestInit | undefined)?.method === 'POST')
     .map((call) => JSON.parse(String((call[1] as RequestInit).body)) as unknown);
+
+/** The both-babies creations made so far, parsed. */
+const createdGroupBodies = (): unknown[] =>
+  fetchMock.mock.calls
+    .filter(
+      (call) =>
+        (call[1] as RequestInit | undefined)?.method === 'POST' &&
+        String(call[0]).endsWith('/event-groups'),
+    )
+    .map((call) => JSON.parse(String((call[1] as RequestInit).body)) as unknown);
+
+/** The URLs the both-babies creations were sent to. */
+const createdGroupUrls = (): string[] =>
+  fetchMock.mock.calls
+    .filter(
+      (call) =>
+        (call[1] as RequestInit | undefined)?.method === 'POST' &&
+        String(call[0]).endsWith('/event-groups'),
+    )
+    .map((call) => String(call[0]));
+
+/** The event creations sent to one baby's own endpoint, with where each went. */
+const createdSingleEvents = (): { url: string; body: unknown }[] =>
+  fetchMock.mock.calls
+    .filter(
+      (call) =>
+        (call[1] as RequestInit | undefined)?.method === 'POST' &&
+        /\/babies\/[^/]+\/events$/.test(String(call[0])),
+    )
+    .map((call) => ({
+      url: String(call[0]),
+      body: JSON.parse(String((call[1] as RequestInit).body)) as unknown,
+    }));
 
 /** The edits made so far: where each one was sent, and what it carried. */
 const patchedEvents = (): { url: string; body: unknown }[] =>
@@ -1372,9 +1426,11 @@ describe('adding a nappy', () => {
 
     // The vocabulary is DIAPER_KINDS from the shared package, in its order.
     // Read off the labels, which is what a parent sees and what gives each
-    // visually hidden radio its accessible name.
+    // visually hidden radio its accessible name. Only the kind radios: the form
+    // also carries the target radios, which are a different question.
     const kindLabels = screen
       .getAllByRole('radio')
+      .filter((radio) => radio.getAttribute('name') === 'kind')
       .map((radio) => radio.closest('label')?.textContent?.trim());
     expect(kindLabels).toEqual(['Wet', 'Dirty', 'Wet and dirty', 'Dry']);
     // Two taps rather than three for the change a parent makes most often.
@@ -2468,5 +2524,414 @@ describe('deleting an event', () => {
     // Nare's events were never touched, and are still there.
     await userEvent.click(screen.getByRole('tab', { name: 'Nare' }));
     expect(await screen.findByText('Nappy')).toBeDefined();
+  });
+});
+
+/**
+ * Recording one entry for both babies.
+ *
+ * "Both" is a target chosen inside the entry form, not a third tab: the tab
+ * strip stays a view filter, the selected baby does not change, and what the API
+ * is asked for is one family-scoped request that writes an ordinary event for
+ * each baby (decision D2). These tests are about that boundary — which endpoint
+ * is called, with what, and which lists refresh afterwards.
+ */
+describe('recording for both babies', () => {
+  /** The target radio with this label, from the open form. */
+  const targetRadio = (label: string): HTMLInputElement =>
+    screen.getByRole('radio', { name: label }) as HTMLInputElement;
+
+  /** The labels of the target radios, in the order the form offers them. */
+  const targetLabels = (): (string | undefined)[] =>
+    screen
+      .getAllByRole('radio')
+      .filter((radio) => radio.getAttribute('name') === 'target')
+      .map((radio) => radio.closest('label')?.textContent?.trim());
+
+  /** Opens one of the four entry forms and aims it at both babies. */
+  async function openFormForBoth(action: string): Promise<void> {
+    await userEvent.click(await screen.findByRole('button', { name: action }));
+    await userEvent.click(await screen.findByRole('radio', { name: 'Both' }));
+  }
+
+  describe('the target selector', () => {
+    it('offers each baby and Both, with the baby on screen already chosen', async () => {
+      stubApi({});
+      renderToday();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add feeding' }));
+
+      // The babies are named, exactly as the tab strip names them.
+      expect(targetLabels()).toEqual(['Ani', 'Nare', 'Both']);
+      expect(targetRadio('Ani').checked).toBe(true);
+      expect(targetRadio('Nare').checked).toBe(false);
+      expect(targetRadio('Both').checked).toBe(false);
+    });
+
+    it('defaults to the other twin when that is the one being viewed', async () => {
+      stubApi({});
+      renderToday();
+
+      await userEvent.click(await screen.findByRole('tab', { name: 'Nare' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Add sleep' }));
+
+      expect(targetRadio('Nare').checked).toBe(true);
+      expect(targetRadio('Ani').checked).toBe(false);
+      // And the tab strip is unchanged: it is a view filter, not a target.
+      expect(screen.getByRole('tab', { name: 'Nare', selected: true })).toBeDefined();
+    });
+
+    it('can be moved to Both, and back to one baby', async () => {
+      stubApi({});
+      renderToday();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add note' }));
+      await userEvent.click(targetRadio('Both'));
+      expect(targetRadio('Both').checked).toBe(true);
+      expect(targetRadio('Ani').checked).toBe(false);
+
+      await userEvent.click(targetRadio('Ani'));
+      expect(targetRadio('Ani').checked).toBe(true);
+      expect(targetRadio('Both').checked).toBe(false);
+    });
+
+    it('is offered by all four entry forms', async () => {
+      stubApi({});
+      renderToday();
+
+      for (const action of ['Add feeding', 'Add sleep', 'Add nappy', 'Add note']) {
+        await userEvent.click(await screen.findByRole('button', { name: action }));
+        expect(screen.getByRole('radio', { name: 'Both' }), action).toBeDefined();
+        await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      }
+    });
+
+    it('is not offered while editing: an event belongs to its own baby', async () => {
+      const note = event('event-note', ANI_ID, { type: 'NOTE', details: 'Smiled' });
+      stubApi({ events: () => Promise.resolve(json({ events: [note] })) });
+      renderToday();
+
+      const row = await firstEventRow();
+      await userEvent.click(within(row).getByRole('button', { name: 'Edit Note' }));
+
+      expect(await screen.findByRole('heading', { name: 'Edit note' })).toBeDefined();
+      expect(screen.queryByRole('radio', { name: 'Both' })).toBeNull();
+      expect(screen.queryByRole('radio', { name: 'Nare' })).toBeNull();
+    });
+
+    it('is not offered to a family with only one baby', async () => {
+      stubApi({ babies: () => Promise.resolve(json({ babies: [babies[0]] })) });
+      renderToday();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add note' }));
+
+      // Nothing to choose between, so no question is asked.
+      expect(screen.queryByRole('radio', { name: 'Both' })).toBeNull();
+      expect(screen.queryByRole('radio', { name: 'Ani' })).toBeNull();
+    });
+  });
+
+  describe('what is sent', () => {
+    it('makes one family-scoped request instead of two per-baby ones', async () => {
+      stubApi({});
+      renderToday();
+
+      await openFormForBoth('Add note');
+      await userEvent.type(screen.getByLabelText('Note'), 'Both settled');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(createdGroupUrls()).toEqual([`/api/v1/families/${FAMILY_ID}/event-groups`]);
+      });
+      // Never one write per baby: the pair has to be written atomically.
+      expect(createdSingleEvents()).toEqual([]);
+    });
+
+    it('never supplies a groupId — the server decides how the pair is linked', async () => {
+      stubApi({});
+      renderToday();
+
+      await openFormForBoth('Add note');
+      await userEvent.type(screen.getByLabelText('Note'), 'Both settled');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(createdGroupBodies()).toHaveLength(1);
+      });
+      const [body] = createdGroupBodies() as Record<string, unknown>[];
+      expect(body).not.toHaveProperty('groupId');
+      expect(body).not.toHaveProperty('babyId');
+      expect(body).not.toHaveProperty('familyId');
+    });
+
+    it('sends a feeding in canonical millilitres, once', async () => {
+      stubApi({});
+      renderToday();
+
+      await openFormForBoth('Add feeding');
+      const time = screen.getByLabelText('Time') as HTMLInputElement;
+      const chosenTime = time.value;
+      await userEvent.type(screen.getByLabelText('Amount'), '120');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(createdGroupBodies()).toEqual([
+          {
+            type: 'FEEDING',
+            startedAt: startedAtFor(chosenTime),
+            amount: 120,
+            unit: 'ml',
+          },
+        ]);
+      });
+    });
+
+    it('converts a feeding entered in ounces before sending it for both', async () => {
+      stubApi({});
+      renderToday();
+
+      await openFormForBoth('Add feeding');
+      await userEvent.type(screen.getByLabelText('Amount'), '4');
+      await userEvent.selectOptions(screen.getByLabelText('Unit'), 'oz');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(createdGroupBodies()).toHaveLength(1);
+      });
+      const [body] = createdGroupBodies() as { amount: number; unit: string }[];
+      // The same canonical amount each baby gets — no ounce reaches the API.
+      expect(body?.unit).toBe('ml');
+      // The shared conversion, not a number copied out of it.
+      expect(body?.amount).toBe(volumeToMl(4, 'oz'));
+    });
+
+    it('sends a sleep’s start and end for both', async () => {
+      stubApi({});
+      renderToday();
+
+      await openFormForBoth('Add sleep');
+      setTime(screen.getByLabelText('Start') as HTMLInputElement, '13:00');
+      setTime(screen.getByLabelText('End') as HTMLInputElement, '14:10');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(createdGroupBodies()).toEqual([
+          {
+            type: 'SLEEP',
+            startedAt: startedAtFor('13:00'),
+            endedAt: startedAtFor('14:10'),
+          },
+        ]);
+      });
+    });
+
+    it('keeps a sleep that crosses midnight one session for both (D5)', async () => {
+      stubApi({});
+      renderToday();
+
+      await openFormForBoth('Add sleep');
+      setTime(screen.getByLabelText('Start') as HTMLInputElement, '23:00');
+      setTime(screen.getByLabelText('End') as HTMLInputElement, '01:00');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(createdGroupBodies()).toEqual([
+          {
+            type: 'SLEEP',
+            startedAt: startedAtFor('23:00'),
+            endedAt: startedAtFor('01:00', 1),
+          },
+        ]);
+      });
+      const [body] = createdGroupBodies() as { startedAt: string; endedAt: string }[];
+      expect(Date.parse(body?.endedAt ?? '') - Date.parse(body?.startedAt ?? '')).toBe(
+        2 * 60 * 60 * 1000,
+      );
+    });
+
+    it('sends the canonical nappy kind for both', async () => {
+      stubApi({});
+      renderToday();
+
+      await openFormForBoth('Add nappy');
+      await userEvent.click(screen.getByRole('radio', { name: 'Wet and dirty' }));
+      const chosenTime = (screen.getByLabelText('Time') as HTMLInputElement).value;
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(createdGroupBodies()).toEqual([
+          {
+            type: 'DIAPER',
+            startedAt: startedAtFor(chosenTime),
+            details: 'wet_and_dirty',
+          },
+        ]);
+      });
+    });
+
+    it('sends a note’s text for both', async () => {
+      stubApi({});
+      renderToday();
+
+      await openFormForBoth('Add note');
+      const chosenTime = (screen.getByLabelText('Time') as HTMLInputElement).value;
+      await userEvent.type(screen.getByLabelText('Note'), 'Both had a quiet morning');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(createdGroupBodies()).toEqual([
+          {
+            type: 'NOTE',
+            startedAt: startedAtFor(chosenTime),
+            details: 'Both had a quiet morning',
+          },
+        ]);
+      });
+    });
+
+    it('still posts to one baby’s own endpoint when the target is left alone', async () => {
+      stubApi({});
+      renderToday();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Add note' }));
+      await userEvent.type(screen.getByLabelText('Note'), 'Just Ani');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => {
+        expect(createdSingleEvents()).toHaveLength(1);
+      });
+      expect(createdSingleEvents()[0]?.url).toBe(
+        `/api/v1/families/${FAMILY_ID}/babies/${ANI_ID}/events`,
+      );
+      expect(createdGroupUrls()).toEqual([]);
+    });
+  });
+
+  describe('afterwards', () => {
+    /**
+     * An API that starts empty and holds the pair once a both-babies entry has
+     * been saved — one ordinary event per baby, exactly as the real one stores
+     * them.
+     */
+    function stubBothCreation(): { saved: () => boolean } {
+      let saved = false;
+      const pair = bothEvent({ type: 'NOTE', details: 'Both settled' });
+
+      stubApi({
+        events: (babyId) =>
+          Promise.resolve(
+            json({ events: saved ? pair.events.filter((e) => e.babyId === babyId) : [] }),
+          ),
+        createEventGroup: () => {
+          saved = true;
+          return Promise.resolve(json({ group: pair }, 201));
+        },
+      });
+
+      return { saved: () => saved };
+    }
+
+    it('closes the form and shows the entry on the day already on screen', async () => {
+      stubBothCreation();
+      renderToday();
+
+      const card = await eventsCard();
+      expect(await within(card).findByText('Nothing recorded yet.')).toBeDefined();
+
+      await openFormForBoth('Add note');
+      await userEvent.type(screen.getByLabelText('Note'), 'Both settled');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByText('Both settled')).toBeDefined();
+      expect(screen.queryByLabelText('Note')).toBeNull();
+      expect(await screen.findByRole('button', { name: 'Add note' })).toBeDefined();
+      // Ani's list was re-read; the day it was read for is unchanged.
+      expect(requestedEventBabyIds()).toEqual([ANI_ID, ANI_ID]);
+    });
+
+    it('leaves the selected baby exactly where it was', async () => {
+      stubBothCreation();
+      renderToday();
+
+      await openFormForBoth('Add note');
+      await userEvent.type(screen.getByLabelText('Note'), 'Both settled');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await screen.findByText('Both settled');
+      expect(screen.getByRole('tab', { name: 'Ani', selected: true })).toBeDefined();
+      expect(screen.getByRole('tab', { name: 'Nare' }).getAttribute('aria-selected')).toBe('false');
+    });
+
+    it('shows the other twin’s copy as soon as their tab is opened', async () => {
+      stubBothCreation();
+      renderToday();
+
+      await openFormForBoth('Add note');
+      await userEvent.type(screen.getByLabelText('Note'), 'Both settled');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByText('Both settled');
+
+      await userEvent.click(screen.getByRole('tab', { name: 'Nare' }));
+
+      // No reload: Nare's list was invalidated too, so opening her tab re-reads
+      // it and her own copy of the entry is there.
+      expect(await screen.findByText('Both settled')).toBeDefined();
+      const nareReads = requestedEventReads().filter((read) => read.babyId === NARE_ID);
+      expect(nareReads).toHaveLength(1);
+      // And it was asked for with the same day range everything else uses.
+      expect(nareReads[0]?.from).toBe(expectedDayRange(BROWSER_ZONE).from);
+    });
+
+    it('keeps both twins’ lists separate — each holds its own document', async () => {
+      stubBothCreation();
+      renderToday();
+
+      await openFormForBoth('Add note');
+      await userEvent.type(screen.getByLabelText('Note'), 'Both settled');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByText('Both settled');
+
+      expect((await eventRows()).length).toBe(1);
+      await userEvent.click(screen.getByRole('tab', { name: 'Nare' }));
+      await screen.findByText('Both settled');
+      expect((await eventRows()).length).toBe(1);
+    });
+  });
+
+  describe('when it fails', () => {
+    it('keeps the form open with what was typed, and says so', async () => {
+      stubApi({ createEventGroup: () => Promise.resolve(apiError(500, 'INTERNAL_ERROR')) });
+      renderToday();
+
+      await openFormForBoth('Add note');
+      await userEvent.type(screen.getByLabelText('Note'), 'Both settled');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByRole('alert')).toHaveProperty(
+        'textContent',
+        'Could not save the note. Please try again.',
+      );
+      expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('Both settled');
+      // Still aimed at both, so the parent can simply try again.
+      expect(targetRadio('Both').checked).toBe(true);
+    });
+
+    it('reports a refused Both without pretending one baby got the entry', async () => {
+      stubApi({ createEventGroup: () => Promise.resolve(apiError(409, 'CONFLICT')) });
+      renderToday();
+
+      await openFormForBoth('Add feeding');
+      await userEvent.type(screen.getByLabelText('Amount'), '120');
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      expect(await screen.findByRole('alert')).toHaveProperty(
+        'textContent',
+        'Could not save the feeding. Please try again.',
+      );
+      // Nothing was written to either baby, and nothing was re-read as if it had.
+      expect(createdSingleEvents()).toEqual([]);
+      expect(requestedEventBabyIds()).toEqual([ANI_ID]);
+      expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('120');
+    });
   });
 });

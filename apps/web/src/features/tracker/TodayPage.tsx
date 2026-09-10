@@ -27,8 +27,14 @@ import { SleepForm } from './SleepForm.js';
  * `day.ts`. There is no date navigation — today is the only day this screen
  * shows — and no daily totals yet.
  *
- * Notes, feedings, sleeps and nappy changes can be added, edited and deleted;
- * the remaining event types and the "both babies" action come later.
+ * Notes, feedings, sleeps and nappy changes can be added, edited and deleted,
+ * each for one baby or for both of them at once; the remaining event types come
+ * later.
+ *
+ * The tab strip stays a *view* filter. "Both" is not a third tab: it is a target
+ * chosen inside the entry form, and choosing it writes an ordinary event for
+ * each baby, so the list on screen is still one baby's day. The selected baby
+ * never changes because an entry was saved.
  * The app is single-family for now, so the caller's first family is used
  * rather than asking them to choose one, and an account with no family — or a
  * family with no babies — is offered the form that fills the gap.
@@ -165,6 +171,7 @@ export function TodayPage() {
           key={openForm.event?.id ?? 'new'}
           familyId={familyId}
           babyId={selectedBabyId}
+          babies={babies}
           event={openForm.event}
           onSaved={() => {
             setOpenForm(null);
@@ -178,6 +185,7 @@ export function TodayPage() {
           key={openForm.event?.id ?? 'new'}
           familyId={familyId}
           babyId={selectedBabyId}
+          babies={babies}
           event={openForm.event}
           onSaved={() => {
             setOpenForm(null);
@@ -191,6 +199,7 @@ export function TodayPage() {
           key={openForm.event?.id ?? 'new'}
           familyId={familyId}
           babyId={selectedBabyId}
+          babies={babies}
           event={openForm.event}
           onSaved={() => {
             setOpenForm(null);
@@ -204,6 +213,7 @@ export function TodayPage() {
           key={openForm.event?.id ?? 'new'}
           familyId={familyId}
           babyId={selectedBabyId}
+          babies={babies}
           event={openForm.event}
           onSaved={() => {
             setOpenForm(null);

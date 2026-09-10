@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import type { BabyEvent } from '@baby-tracker/shared';
+import type { Baby, BabyEvent } from '@baby-tracker/shared';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { TextField } from '../../components/ui/TextField.js';
-import { queryKeys } from '../../services/queryKeys.js';
 import { saveBabyEvent } from './api.js';
+import { EventTargetField } from './EventTargetField.js';
+import { babyTarget, refreshEventsFor, targetBabyIds, type EventTarget } from './eventTarget.js';
 import { endedAtFrom, startedAtFrom, timeInputValue } from './eventTime.js';
 
 /**
@@ -36,7 +37,10 @@ import { endedAtFrom, startedAtFrom, timeInputValue } from './eventTime.js';
 
 export interface SleepFormProps {
   familyId: string;
+  /** The baby on screen — the default target, and the only one an edit has. */
   babyId: string;
+  /** Every baby in the family, so the entry can be aimed at one or at both. */
+  babies: Baby[];
   /** The sleep being edited, if this is an edit rather than a new entry. */
   event?: BabyEvent | undefined;
   /** Called once the sleep is saved and the event list has been refreshed. */
@@ -44,7 +48,7 @@ export interface SleepFormProps {
   onCancel: () => void;
 }
 
-export function SleepForm({ familyId, babyId, event, onSaved, onCancel }: SleepFormProps) {
+export function SleepForm({ familyId, babyId, babies, event, onSaved, onCancel }: SleepFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
@@ -58,22 +62,28 @@ export function SleepForm({ familyId, babyId, event, onSaved, onCancel }: SleepF
   const [endTime, setEndTime] = useState(() =>
     event?.endedAt === undefined ? '' : timeInputValue(new Date(event.endedAt)),
   );
+  const [target, setTarget] = useState<EventTarget>(() => babyTarget(babyId));
   const [startError, setStartError] = useState<string | undefined>(undefined);
   const [endError, setEndError] = useState<string | undefined>(undefined);
 
+  // An edit belongs to the event's own baby, so the target is not a choice
+  // there: moving a sleep to the other twin is not editing it.
+  const saveTarget = editing ? babyTarget(babyId) : target;
+
   const save = useMutation({
     mutationFn: (payload: { startedAt: string; endedAt: string }) =>
-      saveBabyEvent(familyId, babyId, event?.id, {
+      saveBabyEvent(familyId, saveTarget, event?.id, {
         type: 'SLEEP',
         startedAt: payload.startedAt,
         endedAt: payload.endedAt,
       }),
     onSuccess: async () => {
       // Awaited, so the form is still in its saving state until the list the
-      // parent is about to look at actually holds the new sleep.
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.babyEvents(familyId, babyId),
-      });
+      // parent is about to look at actually holds the new sleep. For "both"
+      // that is each twin's list: the one on screen refreshes now, the other
+      // the moment it is shown. Both documents carry the same two instants, so
+      // a sleep that crossed midnight crossed it for each of them.
+      await refreshEventsFor(queryClient, familyId, targetBabyIds(saveTarget, babies));
       onSaved();
     },
   });
@@ -120,6 +130,15 @@ export function SleepForm({ familyId, babyId, event, onSaved, onCancel }: SleepF
             {editing ? t('today.sleep.errors.updateFailed') : t('today.sleep.errors.saveFailed')}
           </p>
         ) : null}
+
+        {editing ? null : (
+          <EventTargetField
+            babies={babies}
+            value={target}
+            onChange={setTarget}
+            disabled={save.isPending}
+          />
+        )}
 
         <TextField
           label={t('today.sleep.start')}

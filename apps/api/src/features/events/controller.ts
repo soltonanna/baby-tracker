@@ -1,5 +1,7 @@
 import type { Request, RequestHandler } from 'express';
 import type {
+  BabyEventData,
+  BabyEventGroupResponse,
   BabyEventListResponse,
   BabyEventResponse,
   CreateBabyEventInput,
@@ -26,6 +28,24 @@ export const create: RequestHandler = async (req, res) => {
   );
 
   res.status(201).json({ event } satisfies BabyEventResponse);
+};
+
+/**
+ * One action recorded for both babies.
+ *
+ * Family-scoped only: there is no baby in the path and none in the body, so the
+ * two babies can only be the ones the service reads from the family the
+ * caller's membership was resolved against. `201`, like every other create,
+ * with the group the action produced — the two ordinary events and the id that
+ * links them.
+ */
+export const createGroup: RequestHandler = async (req, res) => {
+  const group = await eventService.createEventForBothBabies(
+    getFamilyScope(req),
+    req.body as BabyEventData,
+  );
+
+  res.status(201).json({ group } satisfies BabyEventGroupResponse);
 };
 
 /**

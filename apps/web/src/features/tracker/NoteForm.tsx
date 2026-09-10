@@ -1,12 +1,13 @@
 import { useId, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { eventDetailsSchema, type BabyEvent } from '@baby-tracker/shared';
+import { eventDetailsSchema, type Baby, type BabyEvent } from '@baby-tracker/shared';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { TextField } from '../../components/ui/TextField.js';
-import { queryKeys } from '../../services/queryKeys.js';
 import { saveBabyEvent } from './api.js';
+import { EventTargetField } from './EventTargetField.js';
+import { babyTarget, refreshEventsFor, targetBabyIds, type EventTarget } from './eventTarget.js';
 import { startedAtFrom, timeInputValue } from './eventTime.js';
 
 /**
@@ -23,7 +24,10 @@ import { startedAtFrom, timeInputValue } from './eventTime.js';
 
 export interface NoteFormProps {
   familyId: string;
+  /** The baby on screen — the default target, and the only one an edit has. */
   babyId: string;
+  /** Every baby in the family, so the entry can be aimed at one or at both. */
+  babies: Baby[];
   /** The note being edited, if this is an edit rather than a new entry. */
   event?: BabyEvent | undefined;
   /** Called once the note is saved and the event list has been refreshed. */
@@ -31,7 +35,7 @@ export interface NoteFormProps {
   onCancel: () => void;
 }
 
-export function NoteForm({ familyId, babyId, event, onSaved, onCancel }: NoteFormProps) {
+export function NoteForm({ familyId, babyId, babies, event, onSaved, onCancel }: NoteFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
@@ -45,22 +49,27 @@ export function NoteForm({ familyId, babyId, event, onSaved, onCancel }: NoteFor
     timeInputValue(event === undefined ? new Date() : new Date(event.startedAt)),
   );
   const [details, setDetails] = useState(() => event?.details ?? '');
+  const [target, setTarget] = useState<EventTarget>(() => babyTarget(babyId));
   const [timeError, setTimeError] = useState<string | undefined>(undefined);
   const [detailsError, setDetailsError] = useState<string | undefined>(undefined);
 
+  // An edit belongs to the event's own baby, so the target is not a choice
+  // there: moving a note to the other twin is not editing it.
+  const saveTarget = editing ? babyTarget(babyId) : target;
+
   const save = useMutation({
     mutationFn: (payload: { startedAt: string; details: string }) =>
-      saveBabyEvent(familyId, babyId, event?.id, {
+      saveBabyEvent(familyId, saveTarget, event?.id, {
         type: 'NOTE',
         startedAt: payload.startedAt,
         details: payload.details,
       }),
     onSuccess: async () => {
       // Awaited, so the form is still in its saving state until the list the
-      // parent is about to look at actually holds the new note.
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.babyEvents(familyId, babyId),
-      });
+      // parent is about to look at actually holds the new note. For "both"
+      // that is each twin's list: the one on screen refreshes now, the other
+      // the moment it is shown.
+      await refreshEventsFor(queryClient, familyId, targetBabyIds(saveTarget, babies));
       onSaved();
     },
   });
@@ -96,6 +105,15 @@ export function NoteForm({ familyId, babyId, event, onSaved, onCancel }: NoteFor
             {editing ? t('today.note.errors.updateFailed') : t('today.note.errors.saveFailed')}
           </p>
         ) : null}
+
+        {editing ? null : (
+          <EventTargetField
+            babies={babies}
+            value={target}
+            onChange={setTarget}
+            disabled={save.isPending}
+          />
+        )}
 
         <TextField
           label={t('today.note.time')}

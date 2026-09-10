@@ -6,14 +6,16 @@ import {
   VOLUME_UNITS,
   createBabyEventSchema,
   volumeToMl,
+  type Baby,
   type BabyEvent,
   type VolumeUnit,
 } from '@baby-tracker/shared';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { TextField } from '../../components/ui/TextField.js';
-import { queryKeys } from '../../services/queryKeys.js';
 import { saveBabyEvent } from './api.js';
+import { EventTargetField } from './EventTargetField.js';
+import { babyTarget, refreshEventsFor, targetBabyIds, type EventTarget } from './eventTarget.js';
 import { startedAtFrom, timeInputValue } from './eventTime.js';
 
 /**
@@ -56,7 +58,10 @@ const volumeUnitOf = (unit: string | undefined): VolumeUnit =>
 
 export interface FeedingFormProps {
   familyId: string;
+  /** The baby on screen — the default target, and the only one an edit has. */
   babyId: string;
+  /** Every baby in the family, so the entry can be aimed at one or at both. */
+  babies: Baby[];
   /** The feeding being edited, if this is an edit rather than a new entry. */
   event?: BabyEvent | undefined;
   /** Called once the feeding is saved and the event list has been refreshed. */
@@ -64,7 +69,14 @@ export interface FeedingFormProps {
   onCancel: () => void;
 }
 
-export function FeedingForm({ familyId, babyId, event, onSaved, onCancel }: FeedingFormProps) {
+export function FeedingForm({
+  familyId,
+  babyId,
+  babies,
+  event,
+  onSaved,
+  onCancel,
+}: FeedingFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
@@ -80,14 +92,19 @@ export function FeedingForm({ familyId, babyId, event, onSaved, onCancel }: Feed
     event?.amount === undefined ? '' : String(event.amount),
   );
   const [unit, setUnit] = useState<VolumeUnit>(() => volumeUnitOf(event?.unit));
+  const [target, setTarget] = useState<EventTarget>(() => babyTarget(babyId));
   const [timeError, setTimeError] = useState<string | undefined>(undefined);
   const [amountError, setAmountError] = useState<string | undefined>(undefined);
+
+  // An edit belongs to the event's own baby, so the target is not a choice
+  // there: moving a feeding to the other twin is not editing it.
+  const saveTarget = editing ? babyTarget(babyId) : target;
 
   const save = useMutation({
     // `amountMl` is already canonical: the conversion happens in the submit
     // handler, so the mutation has one unit and no unit to decide about.
     mutationFn: (payload: { startedAt: string; amountMl: number }) =>
-      saveBabyEvent(familyId, babyId, event?.id, {
+      saveBabyEvent(familyId, saveTarget, event?.id, {
         type: 'FEEDING',
         startedAt: payload.startedAt,
         amount: payload.amountMl,
@@ -95,10 +112,10 @@ export function FeedingForm({ familyId, babyId, event, onSaved, onCancel }: Feed
       }),
     onSuccess: async () => {
       // Awaited, so the form is still in its saving state until the list the
-      // parent is about to look at actually holds the new feeding.
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.babyEvents(familyId, babyId),
-      });
+      // parent is about to look at actually holds the new feeding. For "both"
+      // that is each twin's list: the one on screen refreshes now, the other
+      // the moment it is shown.
+      await refreshEventsFor(queryClient, familyId, targetBabyIds(saveTarget, babies));
       onSaved();
     },
   });
@@ -142,6 +159,15 @@ export function FeedingForm({ familyId, babyId, event, onSaved, onCancel }: Feed
               : t('today.feeding.errors.saveFailed')}
           </p>
         ) : null}
+
+        {editing ? null : (
+          <EventTargetField
+            babies={babies}
+            value={target}
+            onChange={setTarget}
+            disabled={save.isPending}
+          />
+        )}
 
         <TextField
           label={t('today.feeding.time')}

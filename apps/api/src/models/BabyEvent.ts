@@ -53,13 +53,23 @@ const babyEventSchema = new Schema<BabyEventAttributes>(
 );
 
 /**
- * One index, for the only query the tracker makes: a baby's events, newest
- * first. `familyId` is also in every filter as a second guard, but it would add
- * nothing to the index — `babyId` already narrows to a single baby.
- *
- * No index on `groupId` yet: nothing looks events up by group until the twin
- * action exists.
+ * The tracker's own query: a baby's events, newest first. `familyId` is also in
+ * every filter as a second guard, but it would add nothing to the index —
+ * `babyId` already narrows to a single baby. The same index serves the day
+ * range Today asks for, which is a bound on `startedAt` within one baby.
  */
 babyEventSchema.index({ babyId: 1, startedAt: -1 });
+
+/**
+ * The twin pair, as `ARCHITECTURE_PROPOSAL.md` §5.5 plans it.
+ *
+ * **Sparse**, which is the whole reason it is affordable: only the documents
+ * written by a both-babies action carry a `groupId`, so the index covers those
+ * and ignores every ordinary event. Added now that the action that writes the
+ * field exists — finding the sibling of a grouped event is the one lookup a
+ * grouped edit or delete will make, and reconstructing a group without it would
+ * mean a collection scan.
+ */
+babyEventSchema.index({ groupId: 1 }, { sparse: true });
 
 export const BabyEvent = model<BabyEventAttributes>('BabyEvent', babyEventSchema);

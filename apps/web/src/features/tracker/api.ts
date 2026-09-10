@@ -1,6 +1,8 @@
 import type {
   Baby,
   BabyEvent,
+  BabyEventGroup,
+  BabyEventGroupResponse,
   BabyEventListResponse,
   BabyEventResponse,
   BabyEventType,
@@ -15,6 +17,7 @@ import type {
 } from '@baby-tracker/shared';
 import { apiFetch } from '../../services/apiClient.js';
 import type { DayRange } from './day.js';
+import type { EventTarget } from './eventTarget.js';
 
 /** The Today screen's reads and writes. Thin wrappers, like features/auth/api.ts. */
 
@@ -101,6 +104,29 @@ export async function createBabyEvent(
 }
 
 /**
+ * Records one entry for both babies.
+ *
+ * Family-scoped, with no baby anywhere in the path or the body: the API resolves
+ * the family's two babies itself, so "both" cannot be aimed at anyone else's
+ * child. The payload is the same one a single-baby create sends — the same
+ * event, written once for each baby.
+ *
+ * `groupId` is not a parameter and never will be. The two documents are linked
+ * by an id the server generates; a client that chose it could point one action's
+ * events at another action's group.
+ */
+export async function createBothBabiesEvent(
+  familyId: string,
+  payload: CreateBabyEventPayload,
+): Promise<BabyEventGroup> {
+  const { group } = await apiFetch<BabyEventGroupResponse>(`/families/${familyId}/event-groups`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return group;
+}
+
+/**
  * What the API accepts in the body of an edit.
  *
  * Every field of a create, all optional: an edit form sends the event back
@@ -138,19 +164,32 @@ export async function deleteBabyEvent(
 }
 
 /**
- * Create or edit, chosen by whether there is an event to edit.
+ * Create or edit, for one baby or for both.
  *
  * Four entry forms each need this one decision and nothing else in common, so
  * it lives here as one function rather than as a form abstraction: a form knows
- * its own fields, and this knows the verb.
+ * its own fields, and this knows the verb. Adding "both" widened the verb rather
+ * than the forms — each of them still describes a feeding, a sleep, a nappy or a
+ * note, and none of them knows there are two endpoints.
+ *
+ * Always an array, however many events were written, so a caller has one shape
+ * to handle rather than a union to unpack.
  */
 export function saveBabyEvent(
   familyId: string,
-  babyId: string,
+  target: EventTarget,
   eventId: string | undefined,
   payload: CreateBabyEventPayload,
-): Promise<BabyEvent> {
-  return eventId === undefined
-    ? createBabyEvent(familyId, babyId, payload)
-    : updateBabyEvent(familyId, babyId, eventId, payload);
+): Promise<BabyEvent[]> {
+  if (target.kind === 'both') {
+    // Both is a create. An edit belongs to the event's own baby — the forms
+    // never offer the choice while editing — so this branch cannot be one.
+    return createBothBabiesEvent(familyId, payload).then((group) => group.events);
+  }
+
+  return (
+    eventId === undefined
+      ? createBabyEvent(familyId, target.babyId, payload)
+      : updateBabyEvent(familyId, target.babyId, eventId, payload)
+  ).then((event) => [event]);
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  babyEventDataSchema,
   babyEventFieldsSchemaFor,
   createBabyEventSchema,
   listBabyEventsQuerySchema,
@@ -15,6 +16,69 @@ import {
  */
 
 const parse = (body: unknown) => updateBabyEventSchema.safeParse(body);
+
+/**
+ * The event's own fields, which is what a both-babies create sends.
+ *
+ * The point of these is that “both” needs no schema of its own: it is the same
+ * event data as a single-baby create, and identity — the family, the babies, the
+ * grouping id — is decided by the server, so none of it is accepted from a body.
+ */
+describe('babyEventDataSchema', () => {
+  it('accepts a whole event, exactly as a single-baby create would', () => {
+    const result = babyEventDataSchema.safeParse({
+      type: 'FEEDING',
+      startedAt: '2026-09-04T08:00:00.000Z',
+      endedAt: '2026-09-04T08:20:00.000Z',
+      amount: 120,
+      unit: 'ml',
+      details: 'Took most of the bottle',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.amount).toBe(120);
+    expect(result.data?.startedAt.toISOString()).toBe('2026-09-04T08:00:00.000Z');
+  });
+
+  it('drops every field that says whose event this is', () => {
+    const result = babyEventDataSchema.safeParse({
+      type: 'NOTE',
+      startedAt: '2026-09-04T18:00:00.000Z',
+      details: 'Both settled',
+      familyId: '68b0000000000000000000aa',
+      babyId: '68b0000000000000000000bb',
+      babyIds: ['68b0000000000000000000bb', '68b0000000000000000000cc'],
+      groupId: 'chosen-by-the-client',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({
+      type: 'NOTE',
+      startedAt: new Date('2026-09-04T18:00:00.000Z'),
+      details: 'Both settled',
+    });
+  });
+
+  it('holds the same value rules a create is held to', () => {
+    for (const body of [
+      { type: 'SOMETHING_ELSE', startedAt: '2026-09-04T08:00:00.000Z' },
+      { type: 'NOTE' },
+      { type: 'NOTE', startedAt: 'not-a-date' },
+      { type: 'FEEDING', startedAt: '2026-09-04T08:00:00.000Z', amount: -1 },
+      { type: 'FEEDING', startedAt: '2026-09-04T08:00:00.000Z', unit: '' },
+      { type: 'NOTE', startedAt: '2026-09-04T08:00:00.000Z', details: 'x'.repeat(1001) },
+    ]) {
+      expect(babyEventDataSchema.safeParse(body).success, JSON.stringify(body)).toBe(false);
+    }
+  });
+
+  it('is the create schema minus groupId, so no rule is written twice', () => {
+    expect(Object.keys(babyEventDataSchema.shape)).not.toContain('groupId');
+    expect(Object.keys(createBabyEventSchema.shape).sort()).toEqual(
+      [...Object.keys(babyEventDataSchema.shape), 'groupId'].sort(),
+    );
+  });
+});
 
 describe('updateBabyEventSchema', () => {
   it('accepts a patch of one field, and leaves the rest absent', () => {

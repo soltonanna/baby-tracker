@@ -107,6 +107,10 @@
       "DIAPER": "Nappy",
       "NOTE": "Note"
     },
+    "target": {
+      "label": "For",
+      "both": "Both"
+    },
     "feeding": {
       "title": "New feeding",
       "editTitle": "Edit feeding",

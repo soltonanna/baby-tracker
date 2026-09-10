@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  babyEventDataSchema,
   createBabyEventSchema,
   listBabyEventsQuerySchema,
   updateBabyEventSchema,
@@ -23,3 +24,27 @@ babyEventRouter.get('/', validate({ query: listBabyEventsQuerySchema }), control
 babyEventRouter.get('/:eventId', controller.getOne);
 babyEventRouter.patch('/:eventId', validate({ body: updateBabyEventSchema }), controller.update);
 babyEventRouter.delete('/:eventId', controller.remove);
+
+/**
+ * Mounted by the family router at /:familyId/event-groups, behind
+ * `requireFamilyMembership`.
+ *
+ * A *group* is the resource, not a baby: one action recorded for both babies
+ * writes two ordinary events sharing a `groupId` (decision D2), and this is the
+ * endpoint that creates one. Family-scoped rather than baby-scoped for the same
+ * reason — “both” is not a third baby, and there is no baby in this path to
+ * pretend otherwise. It also leaves room for the grouped edit and delete
+ * `ARCHITECTURE_PROPOSAL.md` §5.5 sketches, which would address a group by its
+ * id here; neither is part of this stage.
+ *
+ * The body is `babyEventDataSchema`: the event's own fields and nothing else.
+ * No `familyId`, no `babyId`, and no `groupId` — unknown keys are stripped, so a
+ * client that sends one is not refused, it simply does not decide anything. The
+ * two babies come from the resolved family scope and the grouping id from the
+ * server.
+ *
+ * Deliberately without `mergeParams`, like every other router here.
+ */
+export const eventGroupRouter: Router = Router();
+
+eventGroupRouter.post('/', validate({ body: babyEventDataSchema }), controller.createGroup);

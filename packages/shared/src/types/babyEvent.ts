@@ -25,3 +25,21 @@ export interface BabyEventResponse {
 export interface BabyEventListResponse {
   events: BabyEvent[];
 }
+
+/**
+ * The events one action wrote for more than one baby, and the id that links
+ * them.
+ *
+ * Not a stored record: there is no group collection and no group model. A group
+ * is exactly “the events carrying this `groupId`” (decision D2), and this is how
+ * the API answers the request that created them — the two ordinary events, plus
+ * the id a future “apply to both” operation would address them by.
+ */
+export interface BabyEventGroup {
+  groupId: string;
+  events: BabyEvent[];
+}
+
+export interface BabyEventGroupResponse {
+  group: BabyEventGroup;
+}
