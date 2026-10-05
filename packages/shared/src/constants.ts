@@ -6,7 +6,8 @@
  * type level, without a separate mapping.
  */
 
-export const LOCALES = ['ru', 'en'] as const;
+/** Interface languages. English is the default; Armenian is `hy` (ISO 639-1). */
+export const LOCALES = ['en', 'ru', 'hy'] as const;
 export type Locale = (typeof LOCALES)[number];
 
 /**
@@ -93,5 +94,5 @@ export interface UnitPreferences {
 }
 
 export const DEFAULT_UNITS: UnitPreferences = { weight: 'kg', length: 'cm', volume: 'ml' };
-export const DEFAULT_LOCALE: Locale = 'ru';
+export const DEFAULT_LOCALE: Locale = 'en';
 export const DEFAULT_TIME_ZONE = 'Asia/Yerevan';

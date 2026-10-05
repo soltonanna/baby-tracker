@@ -8,6 +8,7 @@ import { useAuth } from './AuthContext.js';
 import { AuthLayout } from './AuthLayout.js';
 import { fieldErrorsFromApiError, fieldErrorsFromZod, type FormErrors } from './formErrors.js';
 import { AFTER_LOGIN_PATH } from './routeAccess.js';
+import { currentLocale } from '../../i18n/index.js';
 
 const NO_ERRORS: FormErrors = { fields: {} };
 
@@ -45,6 +46,9 @@ export function RegisterPage() {
       displayName,
       email,
       password,
+      // The language the parent is reading the form in is the best guess for
+      // the account's language too.
+      locale: currentLocale(),
       ...(timezone ? { timezone } : {}),
     });
     if (!parsed.success) {

@@ -129,57 +129,67 @@
   --tone-line: var(--color-peach-line);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-canvas: #16131d;
-    --color-surface: #211d2b;
-    --color-surface-sunken: #1a1723;
-    --color-line: #332d40;
-    --color-ink: #ece6f5;
-    --color-muted: #a59db6;
+/*
+ * The dark palette. `data-theme` on <html> is always a resolved `light` or
+ * `dark`: `features/preferences/theme.ts` (and the inline script in
+ * index.html, before first paint) turn the parent's choice — system, light or
+ * dark — into one of the two, so the palette is written down only once.
+ */
+:root {
+  color-scheme: light;
+}
 
-    --color-accent: #b3a1f0;
-    --color-accent-soft: #2c2545;
-    --color-accent-ink: #cbbdf7;
-    --color-accent-line: #4a3f70;
+:root[data-theme='dark'] {
+  color-scheme: dark;
 
-    --color-on-tone: #16131d;
+  --color-canvas: #16131d;
+  --color-surface: #211d2b;
+  --color-surface-sunken: #1a1723;
+  --color-line: #332d40;
+  --color-ink: #ece6f5;
+  --color-muted: #a59db6;
 
-    --color-boy: #86bdf0;
-    --color-boy-soft: #1d2c40;
-    --color-boy-ink: #a9d2f7;
-    --color-boy-line: #34557a;
+  --color-accent: #b3a1f0;
+  --color-accent-soft: #2c2545;
+  --color-accent-ink: #cbbdf7;
+  --color-accent-line: #4a3f70;
 
-    --color-girl: #f09cbf;
-    --color-girl-soft: #3d2131;
-    --color-girl-ink: #f7bdd5;
-    --color-girl-line: #6e3a55;
+  --color-on-tone: #16131d;
 
-    --color-mint: #7fd3bd;
-    --color-mint-soft: #1b3330;
-    --color-mint-ink: #a6e3d2;
-    --color-mint-line: #2f5e54;
+  --color-boy: #86bdf0;
+  --color-boy-soft: #1d2c40;
+  --color-boy-ink: #a9d2f7;
+  --color-boy-line: #34557a;
 
-    --color-peach: #f0b07c;
-    --color-peach-soft: #3a2a1c;
-    --color-peach-ink: #f5c89f;
-    --color-peach-line: #6b4b2e;
+  --color-girl: #f09cbf;
+  --color-girl-soft: #3d2131;
+  --color-girl-ink: #f7bdd5;
+  --color-girl-line: #6e3a55;
 
-    --color-feeding: #f0b07c;
-    --color-feeding-soft: #3a2a1c;
-    --color-sleep: #b3a1f0;
-    --color-sleep-soft: #2c2545;
-    --color-diaper: #7fd3bd;
-    --color-diaper-soft: #1b3330;
-    --color-note: #ebcf6e;
-    --color-note-soft: #37301a;
+  --color-mint: #7fd3bd;
+  --color-mint-soft: #1b3330;
+  --color-mint-ink: #a6e3d2;
+  --color-mint-line: #2f5e54;
 
-    --color-positive: #84c9a6;
-    --color-critical: #f09aa6;
-    --color-critical-soft: #3b1d24;
+  --color-peach: #f0b07c;
+  --color-peach-soft: #3a2a1c;
+  --color-peach-ink: #f5c89f;
+  --color-peach-line: #6b4b2e;
 
-    --shadow-soft: 0 8px 24px -12px rgb(0 0 0 / 0.5);
-  }
+  --color-feeding: #f0b07c;
+  --color-feeding-soft: #3a2a1c;
+  --color-sleep: #b3a1f0;
+  --color-sleep-soft: #2c2545;
+  --color-diaper: #7fd3bd;
+  --color-diaper-soft: #1b3330;
+  --color-note: #ebcf6e;
+  --color-note-soft: #37301a;
+
+  --color-positive: #84c9a6;
+  --color-critical: #f09aa6;
+  --color-critical-soft: #3b1d24;
+
+  --shadow-soft: 0 8px 24px -12px rgb(0 0 0 / 0.5);
 }
 
 html {

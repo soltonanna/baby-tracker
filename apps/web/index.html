@@ -1,13 +1,30 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"
     />
-    <meta name="theme-color" content="#fbf8fd" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#16131d" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fbf8fd" />
+    <script>
+      // Applies the saved light/dark choice before the first paint, so there is
+      // no flash of the wrong palette. Mirrors resolveTheme() and the storage
+      // key in src/features/preferences/theme.ts.
+      (function () {
+        var choice = null;
+        try {
+          choice = window.localStorage.getItem('baby-tracker.theme');
+        } catch (e) {}
+        var dark =
+          choice === 'dark' ||
+          (choice !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        var theme = dark ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+        document.querySelector('meta[name="theme-color"]').content = dark ? '#16131d' : '#fbf8fd';
+      })();
+    </script>
     <meta name="description" content="Baby Tracker — a calm daily journal for twins." />
     <title>Baby Tracker</title>
   </head>

@@ -199,5 +199,15 @@
         "deleteFailed": "Could not delete the event. Please try again."
       }
     }
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": "Appearance",
+    "themes": {
+      "system": "System",
+      "light": "Light",
+      "dark": "Dark"
+    }
   }
 }

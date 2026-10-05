@@ -2,7 +2,10 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/index.css';
 import './i18n/index.js';
+import { initTheme } from './features/preferences/theme.js';
 import { App } from './app/App.js';
+
+initTheme();
 
 const container = document.getElementById('root');
 if (!container) {
