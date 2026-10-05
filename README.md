@@ -154,6 +154,47 @@ that will not initialise:
 docker compose down -v && docker compose up -d
 ```
 
+## Deployment
+
+The web app is published to **GitHub Pages**, the API to **Render** (free tier),
+and the database is **MongoDB Atlas** (free M0 cluster).
+
+```text
+https://soltonanna.github.io/baby-tracker/   → GitHub Pages (apps/web)
+https://<service>.onrender.com/api/v1        → Render (apps/api)
+mongodb+srv://…                              → Atlas
+```
+
+### One-time setup
+
+1. **Atlas.** Create a free M0 cluster, a database user, and allow access from
+   anywhere (`0.0.0.0/0`, since Render's free tier has no fixed IP). Copy the
+   connection string and add the database name: `…mongodb.net/baby_tracker?…`.
+2. **Render.** New → Blueprint → this repository. `render.yaml` defines the
+   service; paste the Atlas string into `MONGODB_URI` when asked. Note the
+   service URL and check `https://<service>.onrender.com/api/v1/health`.
+3. **GitHub.** Settings → Pages → Source: **GitHub Actions**. Settings →
+   Secrets and variables → Actions → **Variables** → `VITE_API_URL` =
+   `https://<service>.onrender.com/api/v1`.
+4. Push to `main` (or run the workflow by hand). `.github/workflows/deploy-web.yml`
+   builds with `VITE_BASE_PATH=/baby-tracker/` and publishes `apps/web/dist`,
+   with `404.html` as a copy of `index.html` so reloading a deep link works.
+
+Render redeploys the API on every push to `main` as well.
+
+### Known limitations of this setup
+
+- **Two sites, so the refresh cookie is third-party.** It is `SameSite=None;
+Secure`, and `/auth/refresh` and `/auth/logout` reject requests whose
+  `Origin` is not `CORS_ORIGIN` — the CSRF protection `docs/phase-1a-auth.md` §8
+  rule 12 requires. **Safari (iPhone, iPad and Mac) blocks third-party cookies**,
+  so there you can sign in, but a reload or a 15-minute token expiry signs you
+  out. Chrome, Firefox and Android work normally. Putting both behind one
+  domain (`app.example.com` + `api.example.com`) removes the limitation without
+  code changes: set `COOKIE_SAMESITE=lax` and the new `CORS_ORIGIN`.
+- **Render free tier sleeps** after 15 minutes idle; the first request after
+  that takes up to about a minute.
+
 ## Tests
 
 ```bash

@@ -24,6 +24,14 @@ const EnvSchema = z.object({
    */
   COOKIE_SECURE: z.stringbool().optional(),
   COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
+
+  /**
+   * Number of reverse proxies in front of the API (Express `trust proxy`).
+   * 0 locally. Behind a hosting proxy such as Render it must be set, or every
+   * request appears to come from the proxy and the auth rate limits (D20) are
+   * shared by all users.
+   */
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

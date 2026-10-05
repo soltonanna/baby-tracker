@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router';
+import { createBrowserRouter, type RouteObject } from 'react-router';
 import { AppShell } from './layout/AppShell.js';
 import { ProtectedRoute } from '../features/auth/ProtectedRoute.js';
 import { PublicOnlyRoute } from '../features/auth/PublicOnlyRoute.js';
@@ -16,7 +16,7 @@ import { NotFoundPage } from '../features/system/NotFoundPage.js';
  * is not signed in. Sign-in and sign-up sit behind `PublicOnlyRoute`, which
  * sends an already-authenticated visitor into the app instead.
  */
-export const router = createBrowserRouter([
+const routes: RouteObject[] = [
   {
     Component: PublicOnlyRoute,
     children: [
@@ -49,4 +49,12 @@ export const router = createBrowserRouter([
       },
     ],
   },
-]);
+];
+
+/**
+ * Vite's base path — `/baby-tracker/` on GitHub Pages, `/` locally — without the
+ * trailing slash, so links and redirects work under the repository sub-path.
+ */
+const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+
+export const router = createBrowserRouter(routes, { basename });

@@ -13,6 +13,9 @@ export function createApp(): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  if (env.TRUST_PROXY > 0) {
+    app.set('trust proxy', env.TRUST_PROXY);
+  }
   app.use(helmet());
   // `credentials: true` is required by decision D6 — the refresh token travels
   // in an httpOnly cookie, so the browser must be allowed to send it.

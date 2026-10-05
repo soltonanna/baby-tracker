@@ -443,6 +443,14 @@ verification emails land. Login deliberately does **not** leak this.
     D16 puts the web app on a different origin from the API**, the cookie must
     become `SameSite=None; Secure`, and then CSRF protection becomes mandatory.
     Noting it now so the choice is made deliberately, not discovered.
+    **Decided 2026-10-05:** the first deployment is GitHub Pages + Render, so
+    production runs `SameSite=None; Secure`. CSRF protection is
+    `middleware/trustedOrigin.ts` on `/auth/refresh` and `/auth/logout`: a
+    request whose `Origin` is not `CORS_ORIGIN` (or that has no `Origin` and
+    `Sec-Fetch-Site: cross-site`) gets `403 FORBIDDEN_ORIGIN`. Login and
+    register need no guard: their JSON body forces a CORS preflight, which
+    fails for any other origin. Safari blocks the third-party cookie; see
+    README → Deployment.
 13. Rate limits on `/auth/login`, `/auth/register` and `/auth/refresh`.
 14. When password change arrives, it revokes every session for that user —
     `revokedReason: 'password_changed'` exists for it.

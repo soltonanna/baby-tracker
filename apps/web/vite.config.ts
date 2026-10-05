@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
+  // GitHub Pages serves the app from /<repo>/, so the deploy workflow sets
+  // VITE_BASE_PATH=/baby-tracker/. Locally it stays at the root.
+  base: process.env.VITE_BASE_PATH ?? '/',
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,

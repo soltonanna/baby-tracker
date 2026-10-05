@@ -3,6 +3,7 @@ import { loginSchema, registerSchema } from '@baby-tracker/shared';
 import { validate } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { loginLimiter, refreshLimiter, registerLimiter } from '../../middleware/rateLimit.js';
+import { requireTrustedOrigin } from '../../middleware/trustedOrigin.js';
 import * as controller from './controller.js';
 
 /**
@@ -44,6 +45,10 @@ authRouter.post(
   controller.register,
 );
 authRouter.post('/login', loginLimiter, validate({ body: loginSchema }), controller.login);
-authRouter.post('/refresh', refreshLimiter, controller.refresh);
-authRouter.post('/logout', controller.logout);
+// The two routes that act on the refresh cookie. Both are bodiless POSTs, which
+// browsers send cross-site without a CORS preflight, so the origin check is what
+// stops another site from triggering them when the cookie is SameSite=None
+// (docs/phase-1a-auth.md §8, rule 12).
+authRouter.post('/refresh', requireTrustedOrigin, refreshLimiter, controller.refresh);
+authRouter.post('/logout', requireTrustedOrigin, controller.logout);
 authRouter.get('/me', authenticate, controller.me);
