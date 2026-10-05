@@ -11,6 +11,18 @@ import { AuthContext, type AuthContextValue } from '../auth/AuthContext.js';
 import { TodayPage } from './TodayPage.js';
 
 /**
+ * An element's text without its decorative parts — what a screen reader says.
+ * A baby tab carries an `aria-hidden` initial avatar beside the name.
+ */
+function spokenText(element: HTMLElement): string {
+  const copy = element.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll('[aria-hidden="true"]').forEach((hidden) => {
+    hidden.remove();
+  });
+  return copy.textContent;
+}
+
+/**
  * These tests exercise the Today screen through its real query layer: the only
  * thing replaced is `fetch`. That keeps the assertions about what a parent
  * sees, and still proves that switching babies actually re-requests events.
@@ -441,7 +453,7 @@ describe('babies', () => {
 
     const tabs = await screen.findAllByRole('tab');
 
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Ani', 'Nare']);
+    expect(tabs.map(spokenText)).toEqual(['Ani', 'Nare']);
   });
 
   it('selects the first baby automatically', async () => {
@@ -1909,7 +1921,7 @@ describe('adding a baby', () => {
 
     // Two independent babies, one tab each — no twin flow and no twin payload.
     const tabs = await screen.findAllByRole('tab');
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Ani', 'Nare']);
+    expect(tabs.map(spokenText)).toEqual(['Ani', 'Nare']);
     expect(createdBabyBodies()).toEqual([{ name: 'Nare' }]);
     expect(screen.queryByLabelText('Name')).toBeNull();
   });

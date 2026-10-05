@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { Baby } from '@baby-tracker/shared';
 import { CheckIcon } from '../../components/ui/icons.js';
+import { babyTones } from './babyTone.js';
 import { BOTH_BABIES, babyTarget, type EventTarget } from './eventTarget.js';
 
 /**
@@ -39,13 +40,17 @@ export function EventTargetField({ babies, value, onChange, disabled }: EventTar
     return null;
   }
 
-  const options: { key: string; label: string; target: EventTarget }[] = [
+  const tones = babyTones(babies);
+  // Each baby keeps its own colour here as on the tabs; "both" is the family
+  // lavender, belonging to neither.
+  const options: { key: string; label: string; target: EventTarget; tone: string }[] = [
     ...babies.map((baby) => ({
       key: baby.id,
       label: baby.name,
       target: babyTarget(baby.id),
+      tone: tones.get(baby.id) ?? 'family',
     })),
-    { key: 'both', label: t('today.target.both'), target: BOTH_BABIES },
+    { key: 'both', label: t('today.target.both'), target: BOTH_BABIES, tone: 'family' },
   ];
 
   const isSelected = (target: EventTarget): boolean =>
@@ -62,14 +67,15 @@ export function EventTargetField({ babies, value, onChange, disabled }: EventTar
           return (
             <label
               key={option.key}
+              data-tone={option.tone}
               className={[
-                'min-h-touch flex cursor-pointer items-center justify-center gap-1 rounded-card',
+                'min-h-touch flex cursor-pointer items-center justify-center gap-1 rounded-full',
                 'border px-2 text-center text-base font-medium',
                 'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2',
-                'has-[:focus-visible]:outline-accent',
+                'has-[:focus-visible]:outline-tone',
                 selected
-                  ? 'border-accent bg-accent-soft text-accent'
-                  : 'border-line bg-surface text-muted',
+                  ? 'border-tone bg-tone-soft text-tone-ink'
+                  : 'border-tone-line bg-surface text-tone-ink',
               ].join(' ')}
             >
               <input

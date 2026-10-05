@@ -8,6 +8,7 @@ import { PencilIcon, TrashIcon } from '../../components/ui/icons.js';
 import { queryKeys } from '../../services/queryKeys.js';
 import { deleteBabyEvent } from './api.js';
 import { EventTypeIcon } from './EventTypeIcon.js';
+import { EVENT_TYPE_BUBBLE } from './eventTypeBubble.js';
 
 /** Times only — the list is one baby's recent events, so the date is context. */
 function formatTime(iso: string, locale: string): string {
@@ -140,13 +141,18 @@ function EventRow({
   }
 
   return (
-    <li className="rounded-card border border-line bg-surface px-4 py-3">
+    <li className="rounded-field border border-line bg-surface px-3 py-3">
       <div className="flex gap-3">
-        <EventTypeIcon type={event.type} className="mt-0.5 h-5 w-5 shrink-0 text-muted" />
+        <span
+          aria-hidden="true"
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${EVENT_TYPE_BUBBLE[event.type]}`}
+        >
+          <EventTypeIcon type={event.type} className="h-5 w-5" />
+        </span>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
-            <span className="font-medium text-ink">{typeName}</span>
+            <span className="font-semibold text-ink">{typeName}</span>
             <time dateTime={event.startedAt} className="text-sm text-muted">
               {formatWhen(event, i18n.language)}
             </time>
@@ -198,7 +204,7 @@ function EventRow({
               role="group"
               aria-labelledby={questionId}
               onKeyDown={handleKeyDown}
-              className="mt-3 space-y-2 rounded-card bg-surface-sunken p-3"
+              className="mt-3 space-y-2 rounded-field bg-critical-soft p-3"
             >
               <p id={questionId} className="text-sm text-ink">
                 {t('today.event.confirmDelete')}
@@ -263,9 +269,9 @@ function IconButton({
       title={label}
       onClick={onClick}
       className={[
-        'inline-flex h-11 w-11 items-center justify-center rounded-card text-muted',
+        'inline-flex h-11 w-11 items-center justify-center rounded-full text-muted',
         'transition-colors active:bg-surface-sunken',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tone',
       ].join(' ')}
     >
       {children}

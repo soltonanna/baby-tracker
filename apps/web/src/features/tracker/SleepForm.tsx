@@ -126,7 +126,10 @@ export function SleepForm({ familyId, babyId, babies, event, onSaved, onCancel }
     <Card title={editing ? t('today.sleep.editTitle') : t('today.sleep.title')}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {save.isError ? (
-          <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
+          <p
+            role="alert"
+            className="rounded-field bg-critical-soft px-4 py-2 text-sm text-critical"
+          >
             {editing ? t('today.sleep.errors.updateFailed') : t('today.sleep.errors.saveFailed')}
           </p>
         ) : null}

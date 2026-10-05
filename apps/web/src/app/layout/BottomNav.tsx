@@ -24,7 +24,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label={t('app.name')}
-      className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-surface/95 backdrop-blur"
+      className="fixed inset-x-0 bottom-0 z-10 rounded-t-card border-t border-line bg-surface/95 shadow-soft backdrop-blur"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <ul className="mx-auto flex max-w-screen-sm">
@@ -37,14 +37,25 @@ export function BottomNav() {
                 [
                   'flex min-h-touch flex-col items-center justify-center gap-0.5 py-2',
                   'text-xs transition-colors',
-                  isActive ? 'text-accent' : 'text-muted',
+                  isActive ? 'font-medium text-accent-ink' : 'text-muted',
                 ].join(' ')
               }
             >
-              <span aria-hidden="true" className="text-lg leading-none">
-                {item.icon}
-              </span>
-              {t(item.labelKey)}
+              {({ isActive }) => (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className={[
+                      'flex h-7 w-12 items-center justify-center rounded-full text-lg leading-none',
+                      'transition-colors',
+                      isActive ? 'bg-accent-soft' : '',
+                    ].join(' ')}
+                  >
+                    {item.icon}
+                  </span>
+                  {t(item.labelKey)}
+                </>
+              )}
             </NavLink>
           </li>
         ))}

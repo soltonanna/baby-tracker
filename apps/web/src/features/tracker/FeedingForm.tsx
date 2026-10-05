@@ -153,7 +153,10 @@ export function FeedingForm({
     <Card title={editing ? t('today.feeding.editTitle') : t('today.feeding.title')}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {save.isError ? (
-          <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
+          <p
+            role="alert"
+            className="rounded-field bg-critical-soft px-4 py-2 text-sm text-critical"
+          >
             {editing
               ? t('today.feeding.errors.updateFailed')
               : t('today.feeding.errors.saveFailed')}
@@ -214,8 +217,8 @@ export function FeedingForm({
               }}
               disabled={save.isPending}
               className={[
-                'min-h-touch rounded-card border border-line bg-surface px-3 text-base text-ink',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+                'min-h-touch rounded-field border border-line bg-surface px-3 text-base text-ink',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tone',
               ].join(' ')}
             >
               {VOLUME_UNITS.map((volumeUnit) => (

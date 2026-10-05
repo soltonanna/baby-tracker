@@ -1,50 +1,184 @@
 @import 'tailwindcss';
 
 /*
- * Design tokens.
+ * Design tokens — the nursery palette.
  *
- * Warm, calm and quiet: a paper-like ground, soft ink, one warm accent and one
- * muted teal. Nothing childish, no pastel decoration. The dark palette is the
- * one that matters most — it is what a parent sees at 3am — so it is dimmed
- * rather than pure black, with reduced contrast on large surfaces.
+ * Soft pastels on a pale lilac ground, with rounded, pillowy shapes. Every
+ * colour that carries text was checked against WCAG AA (4.5:1) in both
+ * schemes; the pastel tints are only ever backgrounds, never text.
+ *
+ * The dark palette is what a parent sees at 3am, so it is a dimmed plum rather
+ * than pure black, and its filled colours are lighter pastels with dark text
+ * on them (`on-tone`) instead of glaring white.
  */
 @theme {
-  --color-canvas: #faf7f3;
+  /* Ground and text */
+  --color-canvas: #fbf8fd;
   --color-surface: #ffffff;
-  --color-surface-sunken: #f2ece5;
-  --color-line: #e6ddd3;
-  --color-ink: #2c2622;
-  --color-muted: #7c7168;
-  --color-accent: #b8663a;
-  --color-accent-soft: #f6e6da;
-  --color-calm: #3f6f68;
-  --color-calm-soft: #e2eeeb;
-  --color-positive: #4a7c59;
-  --color-critical: #a5453b;
+  --color-surface-sunken: #f4effa;
+  --color-line: #ebe3f3;
+  --color-ink: #3a3350;
+  --color-muted: #716a85;
+
+  /* Family accent — lavender, neutral between the two babies' colours */
+  --color-accent: #7056c8;
+  --color-accent-soft: #efeafd;
+  --color-accent-ink: #5a43ad;
+  --color-accent-line: #d9cff7;
+
+  /* Text and icons drawn on a filled (strong) colour */
+  --color-on-tone: #ffffff;
+
+  /* Baby tones. A boy is blue, a girl is pink; a baby with no gender recorded
+     gets mint or peach, so two such twins still look different. */
+  --color-boy: #2f78bd;
+  --color-boy-soft: #e2effc;
+  --color-boy-ink: #1f5a92;
+  --color-boy-line: #bcd9f6;
+
+  --color-girl: #c8457a;
+  --color-girl-soft: #fde6ef;
+  --color-girl-ink: #9c2f5f;
+  --color-girl-line: #f5c2d6;
+
+  --color-mint: #23806c;
+  --color-mint-soft: #dcf4ec;
+  --color-mint-ink: #1b6656;
+  --color-mint-line: #b4e4d4;
+
+  --color-peach: #a8571f;
+  --color-peach-soft: #ffeedd;
+  --color-peach-ink: #8a4518;
+  --color-peach-line: #f5d3ae;
+
+  /* Event-type tints, for the icon bubbles in the day list */
+  --color-feeding: #b45a2a;
+  --color-feeding-soft: #ffe9dc;
+  --color-sleep: #6a54c4;
+  --color-sleep-soft: #ece7fc;
+  --color-diaper: #227a68;
+  --color-diaper-soft: #dcf4ec;
+  --color-note: #8a6a12;
+  --color-note-soft: #fdf3cf;
+
+  /* Status */
+  --color-positive: #2f7d5c;
+  --color-critical: #bb3f55;
+  --color-critical-soft: #fde8ec;
 
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
-  --radius-card: 1rem;
+  /* Rounded everywhere: cards are pillowy, fields are soft, buttons are pills. */
+  --radius-card: 1.5rem;
+  --radius-field: 1rem;
+
+  --shadow-soft: 0 8px 24px -12px rgb(88 64 140 / 0.18), 0 2px 6px -2px rgb(88 64 140 / 0.08);
 
   /* Minimum comfortable one-handed touch target. */
   --spacing-touch: 3rem;
 }
 
+/*
+ * The current tone. `bg-tone`, `text-tone-ink`, `border-tone-line` and friends
+ * read these variables at the element where they are used, so wrapping any
+ * subtree in `data-tone="boy"` (or girl / mint / peach) recolours every primary
+ * button, selected pill and focus ring inside it to that baby. Outside any
+ * tone, they fall back to the family lavender.
+ */
+@theme inline {
+  --color-tone: var(--tone);
+  --color-tone-soft: var(--tone-soft);
+  --color-tone-ink: var(--tone-ink);
+  --color-tone-line: var(--tone-line);
+}
+
+:root,
+[data-tone='family'] {
+  --tone: var(--color-accent);
+  --tone-soft: var(--color-accent-soft);
+  --tone-ink: var(--color-accent-ink);
+  --tone-line: var(--color-accent-line);
+}
+
+[data-tone='boy'] {
+  --tone: var(--color-boy);
+  --tone-soft: var(--color-boy-soft);
+  --tone-ink: var(--color-boy-ink);
+  --tone-line: var(--color-boy-line);
+}
+
+[data-tone='girl'] {
+  --tone: var(--color-girl);
+  --tone-soft: var(--color-girl-soft);
+  --tone-ink: var(--color-girl-ink);
+  --tone-line: var(--color-girl-line);
+}
+
+[data-tone='mint'] {
+  --tone: var(--color-mint);
+  --tone-soft: var(--color-mint-soft);
+  --tone-ink: var(--color-mint-ink);
+  --tone-line: var(--color-mint-line);
+}
+
+[data-tone='peach'] {
+  --tone: var(--color-peach);
+  --tone-soft: var(--color-peach-soft);
+  --tone-ink: var(--color-peach-ink);
+  --tone-line: var(--color-peach-line);
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #17130f;
-    --color-surface: #211c17;
-    --color-surface-sunken: #12100d;
-    --color-line: #322a23;
-    --color-ink: #ede5dc;
-    --color-muted: #a3968a;
-    --color-accent: #d98a5c;
-    --color-accent-soft: #3a291f;
-    --color-calm: #6fa79d;
-    --color-calm-soft: #22322f;
-    --color-positive: #7aa886;
-    --color-critical: #d1776c;
+    --color-canvas: #16131d;
+    --color-surface: #211d2b;
+    --color-surface-sunken: #1a1723;
+    --color-line: #332d40;
+    --color-ink: #ece6f5;
+    --color-muted: #a59db6;
+
+    --color-accent: #b3a1f0;
+    --color-accent-soft: #2c2545;
+    --color-accent-ink: #cbbdf7;
+    --color-accent-line: #4a3f70;
+
+    --color-on-tone: #16131d;
+
+    --color-boy: #86bdf0;
+    --color-boy-soft: #1d2c40;
+    --color-boy-ink: #a9d2f7;
+    --color-boy-line: #34557a;
+
+    --color-girl: #f09cbf;
+    --color-girl-soft: #3d2131;
+    --color-girl-ink: #f7bdd5;
+    --color-girl-line: #6e3a55;
+
+    --color-mint: #7fd3bd;
+    --color-mint-soft: #1b3330;
+    --color-mint-ink: #a6e3d2;
+    --color-mint-line: #2f5e54;
+
+    --color-peach: #f0b07c;
+    --color-peach-soft: #3a2a1c;
+    --color-peach-ink: #f5c89f;
+    --color-peach-line: #6b4b2e;
+
+    --color-feeding: #f0b07c;
+    --color-feeding-soft: #3a2a1c;
+    --color-sleep: #b3a1f0;
+    --color-sleep-soft: #2c2545;
+    --color-diaper: #7fd3bd;
+    --color-diaper-soft: #1b3330;
+    --color-note: #ebcf6e;
+    --color-note-soft: #37301a;
+
+    --color-positive: #84c9a6;
+    --color-critical: #f09aa6;
+    --color-critical-soft: #3b1d24;
+
+    --shadow-soft: 0 8px 24px -12px rgb(0 0 0 / 0.5);
   }
 }
 

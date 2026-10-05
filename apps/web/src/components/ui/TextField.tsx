@@ -20,8 +20,8 @@ export function TextField({ label, error, className = '', ...rest }: TextFieldPr
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
         className={[
-          'min-h-touch w-full rounded-card border bg-surface px-4 text-base text-ink',
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+          'min-h-touch w-full rounded-field border bg-surface px-4 text-base text-ink',
+          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tone',
           error ? 'border-critical' : 'border-line',
           className,
         ]

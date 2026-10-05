@@ -123,7 +123,10 @@ export function DiaperForm({
     <Card title={editing ? t('today.diaper.editTitle') : t('today.diaper.title')}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {save.isError ? (
-          <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
+          <p
+            role="alert"
+            className="rounded-field bg-critical-soft px-4 py-2 text-sm text-critical"
+          >
             {editing ? t('today.diaper.errors.updateFailed') : t('today.diaper.errors.saveFailed')}
           </p>
         ) : null}
@@ -167,12 +170,12 @@ export function DiaperForm({
                 <label
                   key={diaperKind}
                   className={[
-                    'min-h-touch flex cursor-pointer items-center justify-center rounded-card',
+                    'min-h-touch flex cursor-pointer items-center justify-center rounded-full',
                     'border px-3 text-center text-base font-medium',
                     'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2',
-                    'has-[:focus-visible]:outline-accent',
+                    'has-[:focus-visible]:outline-tone',
                     selected
-                      ? 'border-accent bg-accent-soft text-accent'
+                      ? 'border-tone bg-tone-soft text-tone-ink'
                       : 'border-line bg-surface text-muted',
                   ].join(' ')}
                 >

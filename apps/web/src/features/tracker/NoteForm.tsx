@@ -101,7 +101,10 @@ export function NoteForm({ familyId, babyId, babies, event, onSaved, onCancel }:
     <Card title={editing ? t('today.note.editTitle') : t('today.note.title')}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {save.isError ? (
-          <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
+          <p
+            role="alert"
+            className="rounded-field bg-critical-soft px-4 py-2 text-sm text-critical"
+          >
             {editing ? t('today.note.errors.updateFailed') : t('today.note.errors.saveFailed')}
           </p>
         ) : null}
@@ -145,8 +148,8 @@ export function NoteForm({ familyId, babyId, babies, event, onSaved, onCancel }:
             aria-invalid={detailsError ? true : undefined}
             aria-describedby={detailsError ? detailsErrorId : undefined}
             className={[
-              'w-full rounded-card border bg-surface px-4 py-3 text-base text-ink',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+              'w-full rounded-field border bg-surface px-4 py-3 text-base text-ink',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tone',
               detailsError ? 'border-critical' : 'border-line',
             ].join(' ')}
           />

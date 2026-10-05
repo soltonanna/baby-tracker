@@ -40,6 +40,13 @@ const birthDateSchema = createBabySchema.shape.birthDate.unwrap();
  */
 const GENDER_CHOICES = ['', ...BABY_GENDERS] as const;
 
+/** Each choice previews the colour the baby will be shown in. */
+const GENDER_TONE: Record<BabyGender | 'unspecified', string> = {
+  MALE: 'boy',
+  FEMALE: 'girl',
+  unspecified: 'family',
+};
+
 export interface AddBabyFormProps {
   /** The family the baby is created in — resolved by the API from the path. */
   familyId: string;
@@ -112,7 +119,10 @@ export function AddBabyForm({ familyId, onCreated, onCancel }: AddBabyFormProps)
         <p className="text-sm text-muted">{t('today.baby.intro')}</p>
 
         {create.isError ? (
-          <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
+          <p
+            role="alert"
+            className="rounded-field bg-critical-soft px-4 py-2 text-sm text-critical"
+          >
             {t('today.baby.errors.createFailed')}
           </p>
         ) : null}
@@ -157,14 +167,15 @@ export function AddBabyForm({ familyId, onCreated, onCancel }: AddBabyFormProps)
               return (
                 <label
                   key={choice === '' ? 'unspecified' : choice}
+                  data-tone={GENDER_TONE[choice === '' ? 'unspecified' : choice]}
                   className={[
-                    'min-h-touch flex cursor-pointer items-center justify-center rounded-card',
+                    'min-h-touch flex cursor-pointer items-center justify-center rounded-full',
                     'border px-3 text-center text-base font-medium',
                     'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2',
-                    'has-[:focus-visible]:outline-accent',
+                    'has-[:focus-visible]:outline-tone',
                     selected
-                      ? 'border-accent bg-accent-soft text-accent'
-                      : 'border-line bg-surface text-muted',
+                      ? 'border-tone bg-tone-soft text-tone-ink'
+                      : 'border-tone-line bg-surface text-tone-ink',
                   ].join(' ')}
                 >
                   <input

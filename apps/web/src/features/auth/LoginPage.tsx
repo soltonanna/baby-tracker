@@ -54,7 +54,10 @@ export function LoginPage() {
     <AuthLayout title={t('auth.login.title')}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {formMessage ? (
-          <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
+          <p
+            role="alert"
+            className="rounded-field bg-critical-soft px-4 py-2 text-sm text-critical"
+          >
             {formMessage}
           </p>
         ) : null}
@@ -92,7 +95,7 @@ export function LoginPage() {
 
       <p className="mt-4 text-center text-sm text-muted">
         {t('auth.login.noAccount')}{' '}
-        <Link to="/register" className="font-medium text-accent underline">
+        <Link to="/register" className="font-medium text-accent-ink underline">
           {t('auth.login.goRegister')}
         </Link>
       </p>

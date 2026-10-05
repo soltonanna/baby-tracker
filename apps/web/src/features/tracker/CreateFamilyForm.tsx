@@ -66,7 +66,10 @@ export function CreateFamilyForm({ onCreated }: CreateFamilyFormProps) {
         <p className="text-sm text-muted">{t('today.family.intro')}</p>
 
         {create.isError ? (
-          <p role="alert" className="rounded-card bg-accent-soft px-3 py-2 text-sm text-critical">
+          <p
+            role="alert"
+            className="rounded-field bg-critical-soft px-4 py-2 text-sm text-critical"
+          >
             {t('today.family.errors.createFailed')}
           </p>
         ) : null}

@@ -11,8 +11,10 @@ import { currentDayRange, trackerTimeZone } from './day.js';
 import { fetchBabies, fetchBabyEvents, fetchFamilies } from './api.js';
 import { AddBabyForm } from './AddBabyForm.js';
 import { BabySelector } from './BabySelector.js';
+import { babyTones } from './babyTone.js';
 import { CreateFamilyForm } from './CreateFamilyForm.js';
 import { EventList } from './EventList.js';
+import { EventTypeIcon } from './EventTypeIcon.js';
 import { DiaperForm } from './DiaperForm.js';
 import { FeedingForm } from './FeedingForm.js';
 import { NoteForm } from './NoteForm.js';
@@ -141,8 +143,12 @@ export function TodayPage() {
     return <AddBabyForm familyId={familyId} />;
   }
 
+  // Everything below the tabs — the add buttons, the open form, the day list —
+  // takes the selected baby's colour, so it is always clear whose day this is.
+  const selectedTone = selectedBabyId === null ? undefined : babyTones(babies).get(selectedBabyId);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-tone={selectedTone}>
       <BabySelector
         babies={babies}
         selectedBabyId={selectedBabyId ?? ''}
@@ -157,15 +163,18 @@ export function TodayPage() {
       {openForm?.kind === 'baby' ? (
         // The same form as the empty state, reached from the tracker: this is
         // how the second twin is added, with no separate twin flow.
-        <AddBabyForm
-          familyId={familyId}
-          onCreated={() => {
-            setOpenForm(null);
-          }}
-          onCancel={() => {
-            setOpenForm(null);
-          }}
-        />
+        // Not tinted with the selected baby's colour: the new baby is not them.
+        <div data-tone="family">
+          <AddBabyForm
+            familyId={familyId}
+            onCreated={() => {
+              setOpenForm(null);
+            }}
+            onCancel={() => {
+              setOpenForm(null);
+            }}
+          />
+        </div>
       ) : openForm?.kind === 'feeding' && selectedBabyId !== null ? (
         <FeedingForm
           key={openForm.event?.id ?? 'new'}
@@ -238,6 +247,7 @@ export function TodayPage() {
                 setOpenForm({ kind: 'feeding' });
               }}
             >
+              <EventTypeIcon type="FEEDING" className="h-5 w-5 shrink-0" />
               {t('today.addFeeding')}
             </Button>
             <Button
@@ -248,6 +258,7 @@ export function TodayPage() {
                 setOpenForm({ kind: 'sleep' });
               }}
             >
+              <EventTypeIcon type="SLEEP" className="h-5 w-5 shrink-0" />
               {t('today.addSleep')}
             </Button>
             <Button
@@ -258,6 +269,7 @@ export function TodayPage() {
                 setOpenForm({ kind: 'diaper' });
               }}
             >
+              <EventTypeIcon type="DIAPER" className="h-5 w-5 shrink-0" />
               {t('today.addDiaper')}
             </Button>
             <Button
@@ -268,6 +280,7 @@ export function TodayPage() {
                 setOpenForm({ kind: 'note' });
               }}
             >
+              <EventTypeIcon type="NOTE" className="h-5 w-5 shrink-0" />
               {t('today.addNote')}
             </Button>
           </div>
@@ -289,7 +302,7 @@ export function TodayPage() {
         </div>
       )}
 
-      <Card title={t('today.todayEvents')}>
+      <Card title={t('today.todayEvents')} className="border-tone-line">
         {eventsQuery.isPending ? (
           <p className="flex items-center gap-2 text-muted">
             <Spinner label={t('today.loadingEvents')} /> {t('today.loadingEvents')}

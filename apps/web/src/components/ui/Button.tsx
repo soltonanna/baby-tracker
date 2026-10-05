@@ -3,13 +3,15 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
 type Variant = 'primary' | 'secondary' | 'quiet' | 'danger';
 
 const VARIANT_CLASSES: Record<Variant, string> = {
-  primary: 'bg-accent text-white active:brightness-95',
-  secondary: 'bg-accent-soft text-accent active:brightness-95',
+  // `tone` is the colour of the baby being tracked (blue, pink, …) when the
+  // button sits inside a `data-tone` area, and the family lavender otherwise.
+  primary: 'bg-tone text-on-tone shadow-soft active:brightness-95',
+  secondary: 'border border-tone-line bg-tone-soft text-tone-ink active:brightness-95',
   quiet: 'bg-transparent text-muted active:bg-surface-sunken',
   // Filled, in the palette's one alarming colour: a destructive confirmation
   // must not look like the calm action beside it. The label says "delete" too,
   // so the warning never rests on the colour alone.
-  danger: 'bg-critical text-white active:brightness-95',
+  danger: 'bg-critical text-on-tone active:brightness-95',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -31,9 +33,9 @@ export function Button({
     <button
       type={type}
       className={[
-        'inline-flex min-h-touch items-center justify-center gap-2 rounded-card px-5',
-        'text-base font-medium transition-[filter,background-color]',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        'inline-flex min-h-touch items-center justify-center gap-2 rounded-full px-5',
+        'text-base font-medium transition-[filter,background-color,transform] active:scale-[0.98]',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tone',
         'disabled:opacity-50',
         VARIANT_CLASSES[variant],
         fullWidth ? 'w-full' : '',

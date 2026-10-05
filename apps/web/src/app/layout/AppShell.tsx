@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import { BabyBadge } from '../../components/ui/BabyBadge.js';
 import { Button } from '../../components/ui/Button.js';
 import { useAuth } from '../../features/auth/AuthContext.js';
 import { LOGIN_PATH } from '../../features/auth/routeAccess.js';
@@ -23,11 +24,14 @@ export function AppShell() {
   return (
     <div className="min-h-dvh bg-canvas">
       <header className="mx-auto flex max-w-screen-sm items-start justify-between gap-4 px-4 pt-6 pb-2">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">{t('app.name')}</h1>
-          <p className="text-sm text-muted">
-            {user ? t('auth.signedInAs', { name: user.displayName }) : t('app.tagline')}
-          </p>
+        <div className="flex items-center gap-3">
+          <BabyBadge size="sm" />
+          <div>
+            <h1 className="text-xl font-semibold text-ink">{t('app.name')}</h1>
+            <p className="text-sm text-muted">
+              {user ? t('auth.signedInAs', { name: user.displayName }) : t('app.tagline')}
+            </p>
+          </div>
         </div>
 
         <Button variant="quiet" onClick={handleLogout} disabled={signingOut}>
