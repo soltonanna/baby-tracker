@@ -115,3 +115,32 @@ export function TrashIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** A sun, for the light theme. */
+export function SunIcon(props: IconProps) {
+  return (
+    <Icon name="sun" {...props}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2.75v2M12 19.25v2M2.75 12h2M19.25 12h2M5.46 5.46l1.41 1.41M17.13 17.13l1.41 1.41M5.46 18.54l1.41-1.41M17.13 6.87l1.41-1.41" />
+    </Icon>
+  );
+}
+
+/** A half-filled circle, for "follow the system" appearance. */
+export function AutoThemeIcon(props: IconProps) {
+  return (
+    <Icon name="auto-theme" {...props}>
+      <circle cx="12" cy="12" r="8.25" />
+      <path d="M12 3.75a8.25 8.25 0 0 1 0 16.5Z" fill="currentColor" />
+    </Icon>
+  );
+}
+
+/** A small downward chevron, marking a control that opens a list. */
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <Icon name="chevron-down" {...props}>
+      <path d="m7 10 5 5 5-5" />
+    </Icon>
+  );
+}

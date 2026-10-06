@@ -7,7 +7,6 @@ import { RegisterPage } from '../features/auth/RegisterPage.js';
 import { TodayPage } from '../features/tracker/TodayPage.js';
 import { PlaceholderPage } from '../features/system/PlaceholderPage.js';
 import { NotFoundPage } from '../features/system/NotFoundPage.js';
-import { SettingsPage } from '../features/preferences/SettingsPage.js';
 
 /**
  * Two branches under pathless layout routes.
@@ -41,7 +40,10 @@ const routes: RouteObject[] = [
             path: 'health',
             element: <PlaceholderPage titleKey="nav.health" phase="Phase 4" />,
           },
-          { path: 'more', Component: SettingsPage },
+          {
+            path: 'more',
+            element: <PlaceholderPage titleKey="nav.more" phase="Phase 6" />,
+          },
           { path: '*', Component: NotFoundPage },
         ],
       },

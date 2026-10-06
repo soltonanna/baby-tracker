@@ -1,122 +1,136 @@
+import type { ChangeEvent, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LOCALES, type Locale } from '@baby-tracker/shared';
-import { CheckIcon } from '../../components/ui/icons.js';
-import { LOCALE_NAMES, currentLocale, setLocale } from '../../i18n/index.js';
+import type { Locale } from '@baby-tracker/shared';
+import { LOCALES } from '@baby-tracker/shared';
+import {
+  AutoThemeIcon,
+  ChevronDownIcon,
+  MoonIcon,
+  SunIcon,
+  type IconProps,
+} from '../../components/ui/icons.js';
+import { LOCALE_NAMES, currentLocale, isLocale, setLocale } from '../../i18n/index.js';
 import {
   THEME_PREFERENCES,
+  isThemePreference,
   setThemePreference,
   useThemePreference,
   type ThemePreference,
 } from './theme.js';
 
 /**
- * Language and appearance pickers.
+ * Small language and appearance switchers for the top of every screen.
  *
- * The same pill pattern as the nappy kinds and the "for whom" field: real
- * radios, visually hidden and driven by their labels, a full touch target each,
- * and a tick as well as a colour on the chosen one. Both choices apply at once
- * — there is no Save button to forget.
+ * Each is a real `<select>` laid invisibly over a compact pill: the pill shows
+ * only a short code or an icon, so it fits beside the title on a phone, while
+ * tapping it opens the platform's own picker with the full names. Keyboard and
+ * screen-reader behaviour is the browser's, and the select carries the
+ * accessible name. A choice applies at once — there is no Save to forget.
  */
 
-interface ChoiceOption<T extends string> {
-  value: T;
+interface CompactSelectProps {
   label: string;
-  /** Language of the label itself, when it differs from the page's. */
-  lang?: string;
+  value: string;
+  onChange: (value: string) => void;
+  /** What the closed pill shows. */
+  display: ReactNode;
+  options: { value: string; label: string; lang?: string }[];
 }
 
-interface ChoiceGroupProps<T extends string> {
-  name: string;
-  legend: string;
-  options: ChoiceOption<T>[];
-  value: T;
-  onChange: (value: T) => void;
-}
-
-function ChoiceGroup<T extends string>({
-  name,
-  legend,
-  options,
-  value,
-  onChange,
-}: ChoiceGroupProps<T>) {
+function CompactSelect({ label, value, onChange, display, options }: CompactSelectProps) {
   return (
-    <fieldset className="space-y-1">
-      <legend className="mb-1 block text-sm font-medium text-ink">{legend}</legend>
-      <div className="grid grid-cols-3 gap-2">
-        {options.map((option) => {
-          const selected = option.value === value;
-          return (
-            <label
-              key={option.value}
-              className={[
-                'flex min-h-touch cursor-pointer items-center justify-center gap-1 rounded-full',
-                'border px-2 text-center text-sm font-medium',
-                'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2',
-                'has-[:focus-visible]:outline-tone',
-                selected
-                  ? 'border-tone bg-tone-soft text-tone-ink'
-                  : 'border-tone-line bg-surface text-tone-ink',
-              ].join(' ')}
-            >
-              <input
-                type="radio"
-                name={name}
-                value={option.value}
-                checked={selected}
-                onChange={() => {
-                  onChange(option.value);
-                }}
-                className="sr-only"
-              />
-              <CheckIcon className={selected ? 'h-4 w-4 shrink-0' : 'h-4 w-4 shrink-0 opacity-0'} />
-              <span className="min-w-0 truncate" lang={option.lang}>
-                {option.label}
-              </span>
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
+    <div
+      className={[
+        'relative inline-flex min-h-touch items-center gap-1 rounded-full',
+        'border border-line bg-surface px-3 text-sm font-semibold text-ink',
+        'has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2',
+        'has-[:focus-visible]:outline-tone',
+      ].join(' ')}
+    >
+      <span aria-hidden="true" className="flex items-center">
+        {display}
+      </span>
+      <ChevronDownIcon className="h-3.5 w-3.5 text-muted" />
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+          onChange(event.target.value);
+        }}
+        className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value} lang={option.lang}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
-export function LanguageChoice() {
+export function LanguageSwitcher() {
   const { t } = useTranslation();
-  // `useTranslation` re-renders this on a language change, so reading the
-  // current locale here stays in step.
-  const options = LOCALES.map((locale) => ({
-    value: locale,
-    label: LOCALE_NAMES[locale],
-    lang: locale,
-  }));
+  // `useTranslation` re-renders this on a language change, so the current
+  // locale read here stays in step.
+  const locale = currentLocale();
 
   return (
-    <ChoiceGroup<Locale>
-      name="language"
-      legend={t('settings.language')}
-      options={options}
-      value={currentLocale()}
-      onChange={setLocale}
+    <CompactSelect
+      label={t('settings.language')}
+      value={locale}
+      onChange={(value) => {
+        if (isLocale(value)) {
+          setLocale(value);
+        }
+      }}
+      display={<span className="w-6 text-center">{locale.toUpperCase()}</span>}
+      // Each language is named in itself, so a parent who landed in the wrong
+      // one can still find theirs.
+      options={LOCALES.map((value: Locale) => ({
+        value,
+        label: LOCALE_NAMES[value],
+        lang: value,
+      }))}
     />
   );
 }
 
-export function ThemeChoice() {
+const THEME_ICON: Record<ThemePreference, (props: IconProps) => ReactNode> = {
+  system: AutoThemeIcon,
+  light: SunIcon,
+  dark: MoonIcon,
+};
+
+export function ThemeSwitcher() {
   const { t } = useTranslation();
   const preference = useThemePreference();
-  const options = THEME_PREFERENCES.map((value) => ({
-    value,
-    label: t(`settings.themes.${value}`),
-  }));
+  const CurrentIcon = THEME_ICON[preference];
 
   return (
-    <ChoiceGroup<ThemePreference>
-      name="theme"
-      legend={t('settings.theme')}
-      options={options}
+    <CompactSelect
+      label={t('settings.theme')}
       value={preference}
-      onChange={setThemePreference}
+      onChange={(value) => {
+        if (isThemePreference(value)) {
+          setThemePreference(value);
+        }
+      }}
+      display={<CurrentIcon className="h-5 w-5" />}
+      options={THEME_PREFERENCES.map((value) => ({
+        value,
+        label: t(`settings.themes.${value}`),
+      }))}
     />
+  );
+}
+
+/** Both switchers side by side, as every screen's header shows them. */
+export function PreferenceSwitchers({ className = '' }: { className?: string }) {
+  return (
+    <div className={`flex items-center gap-2 ${className}`.trim()}>
+      <LanguageSwitcher />
+      <ThemeSwitcher />
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BabyBadge } from '../../components/ui/BabyBadge.js';
-import { LanguageChoice, ThemeChoice } from '../preferences/PreferenceControls.js';
+import { PreferenceSwitchers } from '../preferences/PreferenceControls.js';
 
 /**
  * The shell for signed-out pages. Deliberately not `AppShell`: someone who is
@@ -11,7 +11,10 @@ export function AuthLayout({ title, children }: { title: string; children: React
   const { t } = useTranslation();
 
   return (
-    <div className="flex min-h-dvh flex-col justify-center bg-canvas px-4 py-10">
+    <div className="relative flex min-h-dvh flex-col justify-center bg-canvas px-4 py-16">
+      {/* Before signing in too: someone who cannot read the form needs to find
+          their language without an account. */}
+      <PreferenceSwitchers className="absolute top-4 right-4" />
       <div className="mx-auto w-full max-w-sm space-y-6">
         <header className="space-y-2 text-center">
           <BabyBadge />
@@ -22,13 +25,6 @@ export function AuthLayout({ title, children }: { title: string; children: React
         <section className="rounded-card border border-line bg-surface p-6 shadow-soft">
           <h2 className="mb-4 text-lg font-semibold text-ink">{title}</h2>
           {children}
-        </section>
-
-        {/* Before signing in too: someone who cannot read the form needs to
-            find their language without an account. */}
-        <section className="space-y-4 px-1">
-          <LanguageChoice />
-          <ThemeChoice />
         </section>
       </div>
     </div>

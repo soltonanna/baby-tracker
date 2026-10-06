@@ -201,7 +201,6 @@
     }
   },
   "settings": {
-    "title": "Settings",
     "language": "Language",
     "theme": "Appearance",
     "themes": {
