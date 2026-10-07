@@ -6,3 +6,7 @@ package-lock.json
 # Product documents — maintained by hand, never reformatted by tooling.
 BABY_TRACKER_SPEC.md
 ARCHITECTURE_PROPOSAL.md
+
+# Generated from WHO source data — see packages/shared/who-data/README.md.
+packages/shared/src/growth/whoTables.ts
+packages/shared/who-data/

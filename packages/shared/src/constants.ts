@@ -64,6 +64,13 @@ export type BottleContent = (typeof BOTTLE_CONTENTS)[number];
 export const SLEEP_PERIODS = ['day', 'night'] as const;
 export type SleepPeriod = (typeof SLEEP_PERIODS)[number];
 
+/**
+ * Who took a growth measurement. Optional: it only helps a parent tell a home
+ * scale reading from a clinic one when the two disagree.
+ */
+export const MEASUREMENT_SOURCES = ['PARENT', 'DOCTOR'] as const;
+export type MeasurementSource = (typeof MEASUREMENT_SOURCES)[number];
+
 export const DIAPER_KINDS = ['wet', 'dirty', 'wet_and_dirty', 'dry'] as const;
 export type DiaperKind = (typeof DIAPER_KINDS)[number];
 

@@ -13,7 +13,15 @@ import reactRefresh from 'eslint-plugin-react-refresh';
  * we start needing rules like no-floating-promises.
  */
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/coverage/**', '**/node_modules/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      // Generated from WHO source data by scripts/generate-who-tables.mjs.
+      'packages/shared/src/growth/whoTables.ts',
+    ],
+  },
 
   js.configs.recommended,
   tseslint.configs.recommended,

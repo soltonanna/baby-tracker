@@ -17,4 +17,34 @@ export const createBabySchema = z.object({
   gender: z.enum(BABY_GENDERS).optional(),
 });
 
+/**
+ * Weeks + days of pregnancy at birth. 22–44 weeks covers every live birth a
+ * family would record; anything else is a typing slip.
+ */
+export const gestationalAgeSchema = z.object({
+  weeks: z.number().int().min(22).max(44),
+  days: z.number().int().min(0).max(6),
+});
+
+/**
+ * What an edit may change. The name can be changed but not removed; the
+ * optional facts can be cleared with `null`, because "I entered the wrong
+ * birth date" and "we'd rather not record this" are both real.
+ *
+ * `familyId` is not here and never can be: a baby does not move between
+ * families.
+ */
+export const updateBabySchema = z
+  .object({
+    name: babyNameSchema,
+    birthDate: z.coerce.date().nullable(),
+    gender: z.enum(BABY_GENDERS).nullable(),
+    gestationalAge: gestationalAgeSchema.nullable(),
+  })
+  .partial()
+  .refine((patch) => Object.keys(patch).length > 0, {
+    message: 'An update must change at least one field',
+  });
+
 export type CreateBabyInput = z.infer<typeof createBabySchema>;
+export type UpdateBabyInput = z.infer<typeof updateBabySchema>;
