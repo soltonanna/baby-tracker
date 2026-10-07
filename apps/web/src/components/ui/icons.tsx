@@ -144,3 +144,13 @@ export function ChevronDownIcon(props: IconProps) {
     </Icon>
   );
 }
+
+/** A tape measure: the growth action. */
+export function RulerIcon(props: IconProps) {
+  return (
+    <Icon name="ruler" {...props}>
+      <rect x="3" y="8" width="18" height="8" rx="1.5" />
+      <path d="M7 8v3M11 8v4M15 8v3M19 8v2" />
+    </Icon>
+  );
+}

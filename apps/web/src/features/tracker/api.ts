@@ -14,6 +14,7 @@ import type {
   FamilyResponse,
   FamilyWithRole,
   IsoDateTime,
+  UpdateBabyInput,
 } from '@baby-tracker/shared';
 import { apiFetch } from '../../services/apiClient.js';
 import type { DayRange } from './day.js';
@@ -47,6 +48,22 @@ export async function createBaby(familyId: string, input: CreateBabyInput): Prom
   const { baby } = await apiFetch<BabyResponse>(`/families/${familyId}/babies`, {
     method: 'POST',
     body: JSON.stringify(input),
+  });
+  return baby;
+}
+
+/**
+ * Edits a baby. `birthDate` travels as the ISO string of its UTC midnight, the
+ * same way a create sends it; `null` clears an optional fact.
+ */
+export async function updateBaby(
+  familyId: string,
+  babyId: string,
+  patch: UpdateBabyInput,
+): Promise<Baby> {
+  const { baby } = await apiFetch<BabyResponse>(`/families/${familyId}/babies/${babyId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
   });
   return baby;
 }

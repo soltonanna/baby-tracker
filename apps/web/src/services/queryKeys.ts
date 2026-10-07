@@ -19,4 +19,7 @@ export const queryKeys = {
     range === undefined
       ? (['families', familyId, 'babies', babyId, 'events'] as const)
       : (['families', familyId, 'babies', babyId, 'events', range] as const),
+  /** One baby's growth measurements — the whole series, never by day. */
+  growth: (familyId: string, babyId: string) =>
+    ['families', familyId, 'babies', babyId, 'growth'] as const,
 };

@@ -9,14 +9,14 @@
  * The method is WHO's own: the LMS parameters for the baby's age, the Box-Cox
  * z-score, and WHO's restricted extrapolation beyond ±3 SD. Reference:
  * WHO Child Growth Standards: Methods and development (2006), chapter 7.
+ *
+ * Imported as `@baby-tracker/shared/growth`, not from the package root: the
+ * tables behind it are large, and a separate entry point lets the web app load
+ * them only with the screen that draws growth charts.
  */
-import type { BabyGender } from '../constants.js';
+import type { BabyGender, GrowthIndicator } from '../constants.js';
 import type { GestationalAge } from '../types/baby.js';
 import { WHO_MAX_AGE_DAYS, WHO_TABLES } from './whoTables.js';
-
-/** The three measurements the growth feature records. */
-export const GROWTH_INDICATORS = ['weight', 'length', 'headCircumference'] as const;
-export type GrowthIndicator = (typeof GROWTH_INDICATORS)[number];
 
 /** One sex's daily LMS series; index = age in completed days. */
 export interface WhoLmsSeries {

@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import type { BabyEvent, BabyEventType } from '@baby-tracker/shared';
+import { DEFAULT_UNITS, type BabyEvent, type BabyEventType } from '@baby-tracker/shared';
+import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthContext.js';
 import { Button } from '../../components/ui/Button.js';
 import { Card } from '../../components/ui/Card.js';
 import { Spinner } from '../../components/ui/Spinner.js';
 import { queryKeys } from '../../services/queryKeys.js';
-import { currentDayRange, trackerTimeZone } from './day.js';
+import { RulerIcon } from '../../components/ui/icons.js';
+import { GrowthForm } from '../growth/GrowthForm.js';
+import { currentDayRange, currentLocalDate, trackerTimeZone } from './day.js';
 import { fetchBabies, fetchBabyEvents, fetchFamilies } from './api.js';
 import { AddBabyForm } from './AddBabyForm.js';
 import { BabySelector } from './BabySelector.js';
@@ -57,7 +60,7 @@ import { SleepForm } from './SleepForm.js';
  */
 type EventFormKind = 'note' | 'feeding' | 'sleep' | 'diaper';
 
-type OpenForm = { kind: 'baby' } | { kind: EventFormKind; event?: BabyEvent };
+type OpenForm = { kind: 'baby' } | { kind: 'growth' } | { kind: EventFormKind; event?: BabyEvent };
 
 /**
  * Which form edits which kind of event.
@@ -98,6 +101,9 @@ export function TodayPage() {
 
   const [requestedBabyId, setRequestedBabyId] = useState<string | null>(null);
   const [openForm, setOpenForm] = useState<OpenForm | null>(null);
+  // Set when a measurement is saved from here: Today's list does not show
+  // growth, so without this the save would leave no trace on screen.
+  const [measurementSaved, setMeasurementSaved] = useState(false);
 
   // Derived rather than synchronised: the baby the parent tapped, as long as
   // they are still in the list, and otherwise the first one. That covers both
@@ -146,6 +152,7 @@ export function TodayPage() {
   // Everything below the tabs — the add buttons, the open form, the day list —
   // takes the selected baby's colour, so it is always clear whose day this is.
   const selectedTone = selectedBabyId === null ? undefined : babyTones(babies).get(selectedBabyId);
+  const selectedBaby = babies.find((candidate) => candidate.id === selectedBabyId);
 
   return (
     <div className="space-y-4" data-tone={selectedTone}>
@@ -157,6 +164,7 @@ export function TodayPage() {
           // A half-written entry belongs to the baby it was started for, so
           // switching baby closes the form rather than re-aiming it.
           setOpenForm(null);
+          setMeasurementSaved(false);
         }}
       />
 
@@ -175,6 +183,22 @@ export function TodayPage() {
             }}
           />
         </div>
+      ) : openForm?.kind === 'growth' && selectedBaby !== undefined ? (
+        // A shortcut into Health → Growth's own form: measurements are
+        // periodic, so they live there, but the scale is often at hand here.
+        <GrowthForm
+          familyId={familyId}
+          baby={selectedBaby}
+          units={user?.units ?? DEFAULT_UNITS}
+          today={currentLocalDate(trackerTimeZone(user?.timezone))}
+          onSaved={() => {
+            setOpenForm(null);
+            setMeasurementSaved(true);
+          }}
+          onCancel={() => {
+            setOpenForm(null);
+          }}
+        />
       ) : openForm?.kind === 'feeding' && selectedBabyId !== null ? (
         <FeedingForm
           key={openForm.event?.id ?? 'new'}
@@ -284,6 +308,30 @@ export function TodayPage() {
               {t('today.addNote')}
             </Button>
           </div>
+
+          {/*
+            Growth is measured every few weeks, not every few hours, so it sits
+            below the four daily actions rather than among them.
+          */}
+          <Button
+            fullWidth
+            variant="secondary"
+            onClick={() => {
+              setMeasurementSaved(false);
+              setOpenForm({ kind: 'growth' });
+            }}
+          >
+            <RulerIcon className="h-5 w-5 shrink-0" />
+            {t('today.addMeasurement')}
+          </Button>
+          {measurementSaved ? (
+            <p role="status" className="text-center text-sm text-ink">
+              {t('today.measurementSaved')}{' '}
+              <Link to="/health" className="font-medium text-tone-ink underline">
+                {t('today.viewGrowth')}
+              </Link>
+            </p>
+          ) : null}
 
           {/*
             Adding a baby happens twice in the life of a family and a feeding

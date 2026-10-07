@@ -71,6 +71,10 @@ export type SleepPeriod = (typeof SLEEP_PERIODS)[number];
 export const MEASUREMENT_SOURCES = ['PARENT', 'DOCTOR'] as const;
 export type MeasurementSource = (typeof MEASUREMENT_SOURCES)[number];
 
+/** The three measurements the growth feature records. */
+export const GROWTH_INDICATORS = ['weight', 'length', 'headCircumference'] as const;
+export type GrowthIndicator = (typeof GROWTH_INDICATORS)[number];
+
 export const DIAPER_KINDS = ['wet', 'dirty', 'wet_and_dirty', 'dry'] as const;
 export type DiaperKind = (typeof DIAPER_KINDS)[number];
 

@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./growth": {
+      "types": "./dist/growth/who.d.ts",
+      "default": "./dist/growth/who.js"
     }
   },
   "main": "./dist/index.js",

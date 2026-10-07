@@ -10,6 +10,5 @@ export * from './schemas/family.js';
 export * from './schemas/baby.js';
 export * from './schemas/babyEvent.js';
 export * from './schemas/growth.js';
-export * from './growth/who.js';
 export * from './units.js';
 export * from './time.js';

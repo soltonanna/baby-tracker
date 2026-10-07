@@ -198,7 +198,10 @@
       "errors": {
         "deleteFailed": "Could not delete the event. Please try again."
       }
-    }
+    },
+    "addMeasurement": "Add measurement",
+    "measurementSaved": "Measurement saved.",
+    "viewGrowth": "See growth"
   },
   "settings": {
     "language": "Language",
@@ -207,6 +210,118 @@
       "system": "System",
       "light": "Light",
       "dark": "Dark"
+    }
+  },
+  "growth": {
+    "title": "Growth",
+    "loading": "Loading…",
+    "loadFailed": "Could not load your family. Please try again.",
+    "noBabies": "Add your family and babies first, on",
+    "loadingMeasurements": "Loading measurements…",
+    "measurementsFailed": "Could not load measurements. Please try again.",
+    "empty": "No measurements for {{name}} yet. Add weight, length or head circumference after a weigh-in or a clinic visit.",
+    "add": "Add measurement",
+    "editDetails": "Edit {{name}}’s details",
+    "missingDetails": "Add {{name}}’s birth date and sex to see measurements on the WHO growth charts.",
+    "addDetails": "Add details",
+    "disclaimer": "WHO percentiles show where a measurement sits among healthy children of the same age and sex. They are not a diagnosis — talk to your doctor about your baby’s growth.",
+    "indicator": {
+      "weight": "Weight",
+      "length": "Length",
+      "headCircumference": "Head circumference"
+    },
+    "units": {
+      "kg": "kg",
+      "lb": "lb",
+      "cm": "cm",
+      "in": "in"
+    },
+    "sources": {
+      "none": "Not set",
+      "PARENT": "Parent",
+      "DOCTOR": "Doctor"
+    },
+    "summary": {
+      "title": "Latest",
+      "notMeasured": "Not measured yet",
+      "firstMeasurement": "First measurement",
+      "change": "{{change}} since {{date}} ({{days}} d)"
+    },
+    "percentile": {
+      "value": "WHO percentile: {{value}}",
+      "below1": "WHO percentile: below 1",
+      "above99": "WHO percentile: above 99"
+    },
+    "correctedAge": "corrected age {{age}}",
+    "age": {
+      "days": "{{value}} d",
+      "weeks": "{{value}} wk",
+      "months": "{{value}} mo"
+    },
+    "unavailable": {
+      "beforeTermEquivalent": "WHO comparison starts at 40 weeks corrected age.",
+      "outsideRange": "WHO comparison is shown up to 2 years.",
+      "beforeBirth": "This date is before the birth date.",
+      "missingBirthDate": "Add a birth date to compare with WHO standards.",
+      "missingSex": "Add sex to compare with WHO standards."
+    },
+    "form": {
+      "title": "Measurement for {{name}}",
+      "editTitle": "Edit measurement for {{name}}",
+      "date": "Date",
+      "valueLabel": "{{indicator}} ({{unit}})",
+      "source": "Measured by",
+      "note": "Note (optional)",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "invalidDate": "Please enter a valid date.",
+        "futureDate": "The date cannot be in the future.",
+        "beforeBirth": "The date cannot be before the birth date.",
+        "notANumber": "Please enter a number.",
+        "outOfRange": "That doesn’t look right — check the unit ({{unit}}).",
+        "nothingEntered": "Enter at least one of weight, length or head circumference.",
+        "saveFailed": "Could not save the measurement. Please try again.",
+        "updateFailed": "Could not update the measurement. Please try again."
+      }
+    },
+    "list": {
+      "title": "All measurements",
+      "edit": "Edit measurement from {{date}}",
+      "delete": "Delete measurement from {{date}}",
+      "confirmDelete": "Delete this measurement?",
+      "confirm": "Delete",
+      "deleting": "Deleting…",
+      "cancel": "Cancel",
+      "deleteFailed": "Could not delete the measurement. Please try again."
+    },
+    "chart": {
+      "title": "Growth chart",
+      "pick": "Measurement to show",
+      "aria": "{{indicator}} chart for {{name}}, {{n}} measurements, on the WHO growth curves",
+      "xAge": "Age (months)",
+      "xCorrected": "Corrected age (months)",
+      "xSinceFirst": "Months since first measurement",
+      "caption": "Grey band: WHO 2nd–98th percentile. Dashed line: WHO median (50). Values in {{unit}}.",
+      "noReference": "Add birth date and sex to see the WHO curves.",
+      "omitted": "{{n}} measurement(s) outside the WHO chart range are listed below but not drawn."
+    }
+  },
+  "babyDetails": {
+    "title": "{{name}}’s details",
+    "intro": "Birth date, sex and weeks at birth are used to compare growth with the WHO standards.",
+    "sex": "Sex (optional)",
+    "gestation": "Weeks of pregnancy at birth (optional)",
+    "gestationHint": "For babies born before 37 weeks, growth is compared by corrected age until 2 years.",
+    "weeks": "Weeks",
+    "days": "Days",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "errors": {
+      "gestation": "Enter weeks between 22 and 44, and days between 0 and 6.",
+      "saveFailed": "Could not save the details. Please try again."
     }
   }
 }

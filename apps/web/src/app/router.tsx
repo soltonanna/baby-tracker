@@ -36,9 +36,15 @@ const routes: RouteObject[] = [
             path: 'timeline',
             element: <PlaceholderPage titleKey="nav.timeline" phase="Phase 2" />,
           },
+          // Growth is the first Health section; medical history, vaccinations
+          // and appointments join it later.
+          // Lazy: the screen carries the WHO tables, which the daily tracker
+          // never needs, so they load only when Health is opened.
           {
             path: 'health',
-            element: <PlaceholderPage titleKey="nav.health" phase="Phase 4" />,
+            lazy: async () => ({
+              Component: (await import('../features/growth/GrowthPage.js')).GrowthPage,
+            }),
           },
           {
             path: 'more',
