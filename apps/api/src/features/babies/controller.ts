@@ -1,5 +1,10 @@
 import type { RequestHandler } from 'express';
-import type { BabyListResponse, BabyResponse, CreateBabyInput } from '@baby-tracker/shared';
+import type {
+  BabyListResponse,
+  BabyResponse,
+  CreateBabyInput,
+  UpdateBabyInput,
+} from '@baby-tracker/shared';
 import { getFamilyScope } from '../../middleware/familyAccess.js';
 import * as babyService from './service.js';
 
@@ -22,6 +27,17 @@ export const getOne: RequestHandler = async (req, res) => {
   const baby = await babyService.getBaby(
     getFamilyScope(req),
     typeof babyId === 'string' ? babyId : '',
+  );
+
+  res.status(200).json({ baby } satisfies BabyResponse);
+};
+
+export const update: RequestHandler = async (req, res) => {
+  const { babyId } = req.params;
+  const baby = await babyService.updateBaby(
+    getFamilyScope(req),
+    typeof babyId === 'string' ? babyId : '',
+    req.body as UpdateBabyInput,
   );
 
   res.status(200).json({ baby } satisfies BabyResponse);

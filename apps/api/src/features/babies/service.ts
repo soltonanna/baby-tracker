@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import type { Baby as BabyDto, CreateBabyInput } from '@baby-tracker/shared';
+import type { Baby as BabyDto, CreateBabyInput, UpdateBabyInput } from '@baby-tracker/shared';
 import { Baby } from '../../models/Baby.js';
 import { notFound } from '../../lib/httpError.js';
 import type { FamilyScope } from '../../middleware/familyAccess.js';
@@ -45,5 +45,38 @@ export async function getBaby(scope: FamilyScope, babyId: string): Promise<BabyD
     throw notFound('Baby not found');
   }
 
+  return toBaby(baby);
+}
+
+/**
+ * Edit a baby. Absent means unchanged; `null` clears an optional fact.
+ *
+ * Found by `{ _id, familyId }`, so another family's baby is the same 404 as a
+ * missing one. Nothing derived is stored anywhere that would need updating
+ * after a correction: growth percentiles are computed from these fields when
+ * shown, so fixing a birth date fixes every comparison at once.
+ */
+export async function updateBaby(
+  scope: FamilyScope,
+  babyId: string,
+  patch: UpdateBabyInput,
+): Promise<BabyDto> {
+  if (!Types.ObjectId.isValid(babyId)) {
+    throw notFound('Baby not found');
+  }
+
+  const baby = await Baby.findOne({ _id: babyId, familyId: scope.familyId });
+  if (!baby) {
+    throw notFound('Baby not found');
+  }
+
+  if (patch.name !== undefined) baby.name = patch.name;
+  for (const field of ['birthDate', 'gender', 'gestationalAge'] as const) {
+    const value = patch[field];
+    if (value === undefined) continue;
+    baby.set(field, value === null ? undefined : value);
+  }
+
+  await baby.save();
   return toBaby(baby);
 }

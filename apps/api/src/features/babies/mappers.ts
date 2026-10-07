@@ -8,6 +8,9 @@ export function toBaby(baby: BabyDocument): BabyDto {
     name: baby.name,
     ...(baby.birthDate ? { birthDate: baby.birthDate.toISOString() } : {}),
     ...(baby.gender ? { gender: baby.gender } : {}),
+    ...(baby.gestationalAge?.weeks === undefined
+      ? {}
+      : { gestationalAge: { weeks: baby.gestationalAge.weeks, days: baby.gestationalAge.days } }),
     createdAt: baby.createdAt.toISOString(),
     updatedAt: baby.updatedAt.toISOString(),
   };

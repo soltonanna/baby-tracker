@@ -1,5 +1,5 @@
 import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
-import { BABY_GENDERS, type BabyGender } from '@baby-tracker/shared';
+import { BABY_GENDERS, type BabyGender, type GestationalAge } from '@baby-tracker/shared';
 
 export interface BabyAttributes {
   /** The family the baby belongs to. Every read is filtered by it. */
@@ -7,6 +7,8 @@ export interface BabyAttributes {
   name: string;
   birthDate?: Date;
   gender?: BabyGender;
+  /** Weeks + days at birth; under 37 weeks the growth comparison uses corrected age. */
+  gestationalAge?: GestationalAge;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +21,16 @@ const babySchema = new Schema<BabyAttributes>(
     name: { type: String, required: true, trim: true, maxlength: 80 },
     birthDate: { type: Date },
     gender: { type: String, enum: [...BABY_GENDERS] },
+    gestationalAge: {
+      type: new Schema<GestationalAge>(
+        {
+          weeks: { type: Number, required: true, min: 22, max: 44 },
+          days: { type: Number, required: true, min: 0, max: 6 },
+        },
+        { _id: false },
+      ),
+      required: false,
+    },
   },
   {
     timestamps: true,

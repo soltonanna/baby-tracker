@@ -237,3 +237,83 @@ describe('GET /families/:familyId/babies/:babyId', () => {
     expect(JSON.stringify(missing.body)).toBe(JSON.stringify(malformed.body));
   });
 });
+
+describe('PATCH /families/:familyId/babies/:babyId', () => {
+  const patchBaby = (who: Signed, familyId: string, babyId: string, body: unknown) =>
+    request(app)
+      .patch(`${babiesUrl(familyId)}/${babyId}`)
+      .set('Authorization', who.bearer)
+      .send(body);
+
+  async function withOneBaby() {
+    const parent = await withFamily();
+    const created = await addBaby(parent, parent.familyId, { name: 'Baby A' });
+    expect(created.status).toBe(201);
+    return { parent, babyId: created.body.baby.id as string };
+  }
+
+  it('fills in birth date, sex and gestational age', async () => {
+    const { parent, babyId } = await withOneBaby();
+
+    const response = await patchBaby(parent, parent.familyId, babyId, {
+      birthDate: '2026-06-01',
+      gender: 'MALE',
+      gestationalAge: { weeks: 35, days: 4 },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.baby).toMatchObject({
+      name: 'Baby A',
+      birthDate: '2026-06-01T00:00:00.000Z',
+      gender: 'MALE',
+      gestationalAge: { weeks: 35, days: 4 },
+    });
+  });
+
+  it('clears optional facts with null and renames', async () => {
+    const { parent, babyId } = await withOneBaby();
+    await patchBaby(parent, parent.familyId, babyId, {
+      gender: 'FEMALE',
+      gestationalAge: { weeks: 36, days: 0 },
+    });
+
+    const response = await patchBaby(parent, parent.familyId, babyId, {
+      name: 'Nare',
+      gender: null,
+      gestationalAge: null,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.baby.name).toBe('Nare');
+    expect(response.body.baby.gender).toBeUndefined();
+    expect(response.body.baby.gestationalAge).toBeUndefined();
+  });
+
+  it('rejects invalid patches', async () => {
+    const { parent, babyId } = await withOneBaby();
+    for (const body of [
+      {},
+      { name: '' },
+      { name: null },
+      { gestationalAge: { weeks: 45, days: 0 } },
+      { gestationalAge: { weeks: 35 } },
+    ]) {
+      expect(
+        (await patchBaby(parent, parent.familyId, babyId, body)).status,
+        JSON.stringify(body),
+      ).toBe(422);
+    }
+  });
+
+  it('answers 404 for another family’s baby and does not change it', async () => {
+    const { parent: owner, babyId } = await withOneBaby();
+    const stranger = await withFamily();
+
+    const viaOwnFamily = await patchBaby(stranger, stranger.familyId, babyId, { name: 'Stolen' });
+    const viaTheirFamily = await patchBaby(stranger, owner.familyId, babyId, { name: 'Stolen' });
+
+    expect(viaOwnFamily.status).toBe(404);
+    expect(viaTheirFamily.status).toBe(404);
+    expect((await Baby.findById(babyId))?.name).toBe('Baby A');
+  });
+});
