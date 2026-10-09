@@ -52,14 +52,30 @@ export const EVENT_TYPES = [
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
-export const FEEDING_METHODS = ['breast', 'bottle'] as const;
-export type FeedingMethod = (typeof FEEDING_METHODS)[number];
+/**
+ * What a feeding was, as a parent names it: at the breast, a bottle of
+ * expressed breast milk, or a bottle of formula.
+ *
+ * One flat vocabulary rather than a method plus a bottle content: the three are
+ * what the form offers and what a parent chooses between, and the only thing
+ * that follows from the choice is whether a volume was measured — which
+ * `isMeasuredFeedingKind` answers.
+ */
+export const FEEDING_KINDS = ['breast', 'expressed_milk', 'formula'] as const;
+export type FeedingKind = (typeof FEEDING_KINDS)[number];
+
+/**
+ * The kinds that are given from a bottle, and therefore have a volume a parent
+ * can read off it. Breastfeeding has none, and the app never pretends it does.
+ */
+export const MEASURED_FEEDING_KINDS = ['expressed_milk', 'formula'] as const;
+export type MeasuredFeedingKind = (typeof MEASURED_FEEDING_KINDS)[number];
+
+export const isMeasuredFeedingKind = (kind: FeedingKind): kind is MeasuredFeedingKind =>
+  (MEASURED_FEEDING_KINDS as readonly string[]).includes(kind);
 
 export const BREAST_SIDES = ['left', 'right', 'both'] as const;
 export type BreastSide = (typeof BREAST_SIDES)[number];
-
-export const BOTTLE_CONTENTS = ['breast_milk', 'formula', 'other'] as const;
-export type BottleContent = (typeof BOTTLE_CONTENTS)[number];
 
 export const SLEEP_PERIODS = ['day', 'night'] as const;
 export type SleepPeriod = (typeof SLEEP_PERIODS)[number];

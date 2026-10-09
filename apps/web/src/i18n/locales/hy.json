@@ -129,8 +129,28 @@
         "invalidAmount": "Մուտքագրեք ճիշտ քանակ։",
         "invalidTime": "Մուտքագրեք ճիշտ ժամ։",
         "saveFailed": "Չհաջողվեց պահպանել կերակրումը։ Նորից փորձեք։",
-        "updateFailed": "Չհաջողվեց փոփոխել կերակրումը։ Նորից փորձեք։"
-      }
+        "updateFailed": "Չհաջողվեց փոփոխել կերակրումը։ Նորից փորձեք։",
+        "invalidEndTime": "Մուտքագրեք ավարտի ճիշտ ժամ։",
+        "endTooLate": "Ավարտի ժամը շատ հեռու է սկզբից։ Ստուգեք այն։"
+      },
+      "kind": "Տեսակ",
+      "kinds": {
+        "breast": "Կրծքով",
+        "expressed_milk": "Կթած կաթ",
+        "formula": "Խառնուրդ"
+      },
+      "side": "Կողմ (ըստ ցանկության)",
+      "sides": {
+        "left": "Ձախ",
+        "right": "Աջ",
+        "both": "Երկու կողմն էլ"
+      },
+      "start": "Սկիզբ",
+      "end": "Ավարտ (ըստ ցանկության)",
+      "quickDuration": "Արագ տևողություն",
+      "plusMinutes": "{{minutes}} ր",
+      "clearEnd": "Առանց ավարտի",
+      "endOptional": "Չգիտե՞ք՝ որքան տևեց։ Թողեք ավարտը դատարկ․ սկզբի ժամը բավական է։"
     },
     "duration": {
       "hoursMinutes": "{{hours}} ժ {{minutes}} ր",
@@ -201,7 +221,39 @@
     },
     "addMeasurement": "Ավելացնել չափում",
     "measurementSaved": "Չափումը պահպանված է։",
-    "viewGrowth": "Դիտել աճը"
+    "viewGrowth": "Դիտել աճը",
+    "summary": {
+      "title": "Այսօրվա կերակրումները",
+      "feedings": "Կերակրում՝ {{count}}",
+      "sinceLast": "Վերջինը՝ {{duration}} առաջ",
+      "noFeedings": "Այսօր դեռ կերակրում գրանցված չէ։",
+      "byKind": "Կերակրումներն ըստ տեսակի",
+      "kinds": {
+        "breast": "Կրծքով",
+        "expressed_milk": "Կթած կաթ",
+        "formula": "Խառնուրդ",
+        "unspecified": "Շիշ"
+      },
+      "averageInterval": "Միջին ընդմիջում",
+      "intervalRange": "Ամենակարճ – ամենաերկար",
+      "notEnough": "—",
+      "bottleVolume": "Շշի ծավալ (չափված)",
+      "bottleVolumeValue": "{{volume}} · շիշ՝ {{count}}",
+      "noBottles": "Շիշ չի եղել",
+      "breastTime": "Կրծքով կերակրման ժամանակ",
+      "breastTimeValue": "{{duration}} · ժամանակով՝ {{timed}}-ը {{count}}-ից",
+      "notTimed": "Ժամանակը նշված չէ",
+      "diapers": "Տակդիրներ",
+      "diapersValue": "թաց՝ {{wet}} · կեղտոտ՝ {{dirty}}",
+      "distribution": "Օրվա ընթացքում",
+      "periods": {
+        "night": "Գիշեր",
+        "morning": "Առավոտ",
+        "afternoon": "Ցերեկ",
+        "evening": "Երեկո"
+      },
+      "breastNote": "Կրծքով կերակրման ծավալը չի չափվում, ուստի այն ներառված չէ շշի ծավալում։ Միասին ավելին են ասում՝ կերակրումները, թաց և կեղտոտ տակդիրները, քաշի փոփոխությունը և երեխայի ընդհանուր վիճակը․ մանկաբույժը կօգնի դրանք գնահատել։"
+    }
   },
   "settings": {
     "language": "Լեզու",

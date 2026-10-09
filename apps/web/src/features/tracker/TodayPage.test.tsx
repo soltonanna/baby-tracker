@@ -236,8 +236,28 @@ function stubApi(routes: Routes): void {
   vi.stubGlobal('fetch', fetchMock);
 }
 
-/** Event *reads* so far, in order: which baby, and which day range was asked for. */
+/**
+ * Event *list* reads so far, in order: which baby, and which day range was asked
+ * for.
+ *
+ * The feeding summary also reads the previous day, once per baby and day, to
+ * find when yesterday's last feeding began. That read carries an explicit
+ * `limit` and the list's does not, so it is left out here: these assertions are
+ * about the day the list shows. `previousDayReads()` answers for the other one.
+ */
 const requestedEventReads = (): { babyId: string; from: string | null; to: string | null }[] =>
+  allEventReads().filter((read) => read.limit === null);
+
+/** The summary's previous-day reads, in order. */
+const previousDayReads = (): { babyId: string; from: string | null; to: string | null }[] =>
+  allEventReads().filter((read) => read.limit !== null);
+
+const allEventReads = (): {
+  babyId: string;
+  from: string | null;
+  to: string | null;
+  limit: string | null;
+}[] =>
   fetchMock.mock.calls
     .filter((call) => ((call[1] as RequestInit | undefined)?.method ?? 'GET') === 'GET')
     .map((call) => {
@@ -249,10 +269,14 @@ const requestedEventReads = (): { babyId: string; from: string | null; to: strin
             babyId: match[1] ?? '',
             from: url.searchParams.get('from'),
             to: url.searchParams.get('to'),
+            limit: url.searchParams.get('limit'),
           };
     })
     .filter(
-      (read): read is { babyId: string; from: string | null; to: string | null } => read !== null,
+      (
+        read,
+      ): read is { babyId: string; from: string | null; to: string | null; limit: string | null } =>
+        read !== null,
     );
 
 /** Event *reads* so far, in order, as baby ids. */
@@ -952,6 +976,9 @@ describe('adding a feeding', () => {
     unit: HTMLSelectElement;
   }> {
     await userEvent.click(await screen.findByRole('button', { name: 'Add feeding' }));
+    // A new feeding opens on Breast, which has no amount; these tests are about
+    // a bottle, so they choose one first. Breastfeeding has its own describe.
+    await userEvent.click(await screen.findByRole('radio', { name: 'Formula' }));
 
     return {
       time: await screen.findByLabelText('Time'),
@@ -1023,6 +1050,7 @@ describe('adding a feeding', () => {
           startedAt: startedAtFor(chosenTime),
           amount: 120,
           unit: 'ml',
+          feeding: { kind: 'formula' },
         },
       ]);
     });
@@ -2681,6 +2709,7 @@ describe('recording for both babies', () => {
       renderToday();
 
       await openFormForBoth('Add feeding');
+      await userEvent.click(screen.getByRole('radio', { name: 'Expressed milk' }));
       const time = screen.getByLabelText('Time') as HTMLInputElement;
       const chosenTime = time.value;
       await userEvent.type(screen.getByLabelText('Amount'), '120');
@@ -2693,6 +2722,7 @@ describe('recording for both babies', () => {
             startedAt: startedAtFor(chosenTime),
             amount: 120,
             unit: 'ml',
+            feeding: { kind: 'expressed_milk' },
           },
         ]);
       });
@@ -2703,6 +2733,7 @@ describe('recording for both babies', () => {
       renderToday();
 
       await openFormForBoth('Add feeding');
+      await userEvent.click(screen.getByRole('radio', { name: 'Formula' }));
       await userEvent.type(screen.getByLabelText('Amount'), '4');
       await userEvent.selectOptions(screen.getByLabelText('Unit'), 'oz');
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -2933,6 +2964,7 @@ describe('recording for both babies', () => {
       renderToday();
 
       await openFormForBoth('Add feeding');
+      await userEvent.click(screen.getByRole('radio', { name: 'Formula' }));
       await userEvent.type(screen.getByLabelText('Amount'), '120');
       await userEvent.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -2945,5 +2977,298 @@ describe('recording for both babies', () => {
       expect(requestedEventBabyIds()).toEqual([ANI_ID]);
       expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('120');
     });
+  });
+});
+
+describe('feeding kinds', () => {
+  /** The rows' and the summary's events, all on today's calendar day. */
+  const breastFeed = (id: string, start: string, overrides: Partial<BabyEvent> = {}): BabyEvent =>
+    event(id, ANI_ID, {
+      type: 'FEEDING',
+      startedAt: startedAtFor(start),
+      feeding: { kind: 'breast', side: 'left' },
+      ...overrides,
+    });
+
+  it('opens a new feeding on Breast, with no amount to fill in', async () => {
+    stubApi({});
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add feeding' }));
+
+    expect((screen.getByRole('radio', { name: 'Breast' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByLabelText('Amount')).toBeNull();
+    expect(screen.getByLabelText('Start')).toBeDefined();
+    expect((screen.getByLabelText('End (optional)') as HTMLInputElement).value).toBe('');
+    // Side is a choice, not a default someone has to undo.
+    expect((screen.getByRole('radio', { name: 'Left' }) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('records a breastfeed with only a start time', async () => {
+    stubApi({});
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add feeding' }));
+    setTime(screen.getByLabelText('Start') as HTMLInputElement, '03:10');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toEqual([
+        { type: 'FEEDING', startedAt: startedAtFor('03:10'), feeding: { kind: 'breast' } },
+      ]);
+    });
+  });
+
+  it('records the side and a quick duration as an end time', async () => {
+    stubApi({});
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add feeding' }));
+    await userEvent.click(screen.getByRole('radio', { name: 'Right' }));
+    setTime(screen.getByLabelText('Start') as HTMLInputElement, '10:00');
+    await userEvent.click(screen.getByRole('button', { name: '15 min' }));
+
+    expect((screen.getByLabelText('End (optional)') as HTMLInputElement).value).toBe('10:15');
+    expect(screen.getByRole('button', { name: '15 min' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toEqual([
+        {
+          type: 'FEEDING',
+          startedAt: startedAtFor('10:00'),
+          endedAt: startedAtFor('10:15'),
+          feeding: { kind: 'breast', side: 'right' },
+        },
+      ]);
+    });
+  });
+
+  it('reads an end just after midnight as the next day', async () => {
+    stubApi({});
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add feeding' }));
+    setTime(screen.getByLabelText('Start') as HTMLInputElement, '23:50');
+    await userEvent.click(screen.getByRole('button', { name: '20 min' }));
+    expect((screen.getByLabelText('End (optional)') as HTMLInputElement).value).toBe('00:10');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(createdEventBodies()).toHaveLength(1);
+    });
+    expect(createdEventBodies()[0]).toMatchObject({ endedAt: startedAtFor('00:10', 1) });
+  });
+
+  it('questions an end that would make a feed of most of a day', async () => {
+    stubApi({});
+    renderToday();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add feeding' }));
+    setTime(screen.getByLabelText('Start') as HTMLInputElement, '10:10');
+    setTime(screen.getByLabelText('End (optional)') as HTMLInputElement, '10:05');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(
+      await screen.findByText('That end time looks too far from the start. Please check it.'),
+    ).toBeDefined();
+    expect(createdEventBodies()).toEqual([]);
+  });
+
+  it('starts a new feeding on the kind of today’s last one', async () => {
+    stubApi({
+      events: dayScoped([
+        breastFeed('early', '01:00'),
+        event('later', ANI_ID, {
+          startedAt: startedAtFor('02:00'),
+          amount: 90,
+          unit: 'ml',
+          feeding: { kind: 'formula' },
+        }),
+      ]),
+    });
+    renderToday();
+
+    await eventRows();
+    await userEvent.click(screen.getByRole('button', { name: 'Add feeding' }));
+
+    expect((screen.getByRole('radio', { name: 'Formula' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByLabelText('Amount')).toBeDefined();
+  });
+
+  it('shows the kind, side and length of a breastfeed in its row', async () => {
+    stubApi({
+      events: dayScoped([breastFeed('feed', '01:00', { endedAt: startedAtFor('01:20') })]),
+    });
+    renderToday();
+
+    const row = await firstEventRow();
+    expect(within(row).getByText('Breast · Left')).toBeDefined();
+    expect(within(row).getByText('20m')).toBeDefined();
+  });
+
+  it('clears the volume when a bottle is edited into a breastfeed', async () => {
+    const bottle = event('event-bottle', ANI_ID, {
+      startedAt: startedAtFor('01:00'),
+      amount: 120,
+      unit: 'ml',
+      feeding: { kind: 'formula' },
+    });
+    stubApi({ events: () => Promise.resolve(json({ events: [bottle] })) });
+    renderToday();
+
+    const row = await firstEventRow();
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit Feeding' }));
+    await userEvent.click(screen.getByRole('radio', { name: 'Breast' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(patchedEvents()).toHaveLength(1);
+    });
+    expect(patchedEvents()[0]?.body).toEqual({
+      type: 'FEEDING',
+      startedAt: startedAtFor('01:00'),
+      feeding: { kind: 'breast' },
+      amount: null,
+      unit: null,
+    });
+  });
+
+  it('keeps an older feeding with no kind exactly as it was when only the amount changes', async () => {
+    const old = event('event-old', ANI_ID, {
+      startedAt: startedAtFor('01:00'),
+      amount: 120,
+      unit: 'ml',
+    });
+    stubApi({ events: () => Promise.resolve(json({ events: [old] })) });
+    renderToday();
+
+    const row = await firstEventRow();
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit Feeding' }));
+    for (const label of ['Breast', 'Expressed milk', 'Formula']) {
+      expect((screen.getByRole('radio', { name: label }) as HTMLInputElement).checked).toBe(false);
+    }
+    const amount = screen.getByLabelText('Amount') as HTMLInputElement;
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '130');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(patchedEvents()).toHaveLength(1);
+    });
+    expect(patchedEvents()[0]?.body).not.toHaveProperty('feeding');
+  });
+});
+
+describe('feeding summary', () => {
+  /** The summary card, once it is on screen. */
+  async function summaryCard(): Promise<HTMLElement> {
+    const heading = await screen.findByRole('heading', { name: 'Feedings today' });
+    const section = heading.closest('section');
+    if (section === null) {
+      throw new Error('The summary heading is not inside a section');
+    }
+    return section;
+  }
+
+  /** The value beside a label in the summary's list of figures. */
+  function figure(card: HTMLElement, label: string): string {
+    const term = within(card).getByText(label);
+    return term.nextElementSibling?.textContent ?? '';
+  }
+
+  const feed = (id: string, start: string, overrides: Partial<BabyEvent> = {}): BabyEvent =>
+    event(id, ANI_ID, {
+      type: 'FEEDING',
+      startedAt: startedAtFor(start),
+      feeding: { kind: 'breast' },
+      ...overrides,
+    });
+
+  it('counts the day’s feedings, by kind, and adds up only measured bottle volume', async () => {
+    stubApi({
+      events: dayScoped([
+        feed('a', '00:30', { endedAt: startedAtFor('00:50') }),
+        feed('b', '03:00', {
+          feeding: { kind: 'expressed_milk' },
+          amount: 60,
+          unit: 'ml',
+        }),
+        feed('c', '05:30', { feeding: { kind: 'formula' }, amount: 90, unit: 'ml' }),
+        event('d', ANI_ID, { type: 'DIAPER', startedAt: startedAtFor('01:00'), details: 'wet' }),
+        event('e', ANI_ID, {
+          type: 'DIAPER',
+          startedAt: startedAtFor('04:00'),
+          details: 'wet_and_dirty',
+        }),
+      ]),
+    });
+    renderToday();
+
+    const card = await summaryCard();
+    expect(within(card).getByText('Feedings: 3')).toBeDefined();
+    expect(within(card).getByText('Breast 1')).toBeDefined();
+    expect(within(card).getByText('Expressed milk 1')).toBeDefined();
+    expect(within(card).getByText('Formula 1')).toBeDefined();
+    expect(figure(card, 'Bottle volume (measured)')).toBe('150 ml · bottles: 2');
+    expect(figure(card, 'Breastfeeding time')).toBe('20m · timed 1 of 1');
+    expect(figure(card, 'Average interval')).toBe('2h 30m');
+    expect(figure(card, 'Shortest – longest')).toBe('2h 30m – 2h 30m');
+    expect(figure(card, 'Nappies')).toBe('wet 2 · dirty 1');
+    expect(card.querySelectorAll('[data-feeding-mark]')).toHaveLength(3);
+  });
+
+  it('measures the first interval from yesterday’s last feeding', async () => {
+    stubApi({
+      events: dayScoped([
+        feed('yesterday', '23:00', { startedAt: startedAtFor('23:00', -1) }),
+        feed('today', '01:30'),
+      ]),
+    });
+    renderToday();
+
+    const card = await summaryCard();
+    await waitFor(() => {
+      expect(figure(card, 'Average interval')).toBe('2h 30m');
+    });
+    // Yesterday was read once, for this, and not shown in today's list.
+    expect(previousDayReads().map((read) => read.babyId)).toEqual([ANI_ID]);
+    expect(await eventRows()).toHaveLength(1);
+  });
+
+  it('explains breastfeeding volume in neutral words, only when there was a breastfeed', async () => {
+    stubApi({ events: dayScoped([feed('a', '00:30')]) });
+    renderToday();
+
+    const card = await summaryCard();
+    expect(within(card).getByText(/Breastfeeding volume isn't measured/)).toBeDefined();
+    expect(figure(card, 'Bottle volume (measured)')).toBe('No bottles');
+    // Never a verdict on whether it was enough.
+    expect(card.textContent).not.toMatch(/enough|too (few|little|much)|low|normal/i);
+  });
+
+  it('leaves the note out when every feeding was a bottle', async () => {
+    stubApi({
+      events: dayScoped([
+        feed('a', '00:30', { feeding: { kind: 'formula' }, amount: 90, unit: 'ml' }),
+      ]),
+    });
+    renderToday();
+
+    const card = await summaryCard();
+    expect(within(card).queryByText(/Breastfeeding volume isn't measured/)).toBeNull();
+    expect(within(card).queryByText('Breastfeeding time')).toBeNull();
+  });
+
+  it('says plainly when nothing has been fed yet', async () => {
+    stubApi({ events: dayScoped([]) });
+    renderToday();
+
+    const card = await summaryCard();
+    expect(within(card).getByText('No feedings recorded yet today.')).toBeDefined();
+    expect(figure(card, 'Average interval')).toBe('—');
   });
 });

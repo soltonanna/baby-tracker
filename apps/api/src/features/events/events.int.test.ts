@@ -1512,3 +1512,163 @@ describe('POST .../event-groups', () => {
     });
   });
 });
+
+/**
+ * Feeding kinds — breast, expressed breast milk, formula.
+ *
+ * The shared schema tests cover the rules as functions; these check that the
+ * API stores and returns the kind, applies the same rules on every write path,
+ * and checks an edit against the event as it would be after the patch.
+ */
+describe('feeding kinds', () => {
+  const startedAt = '2026-10-09T06:00:00.000Z';
+
+  it('stores and returns a breastfeed with a side and an end, and no amount', async () => {
+    const parent = await withBaby();
+    const response = await addEvent(parent, {
+      type: 'FEEDING',
+      startedAt,
+      endedAt: '2026-10-09T06:20:00.000Z',
+      feeding: { kind: 'breast', side: 'left' },
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.event.feeding).toEqual({ kind: 'breast', side: 'left' });
+    expect(response.body.event.amount).toBeUndefined();
+
+    const listed = await request(app)
+      .get(eventsUrl(parent.familyId, parent.babyId))
+      .set('Authorization', parent.bearer);
+    expect(listed.body.events[0].feeding).toEqual({ kind: 'breast', side: 'left' });
+  });
+
+  it('stores a bottle of expressed milk or formula with its volume', async () => {
+    const parent = await withBaby();
+    for (const kind of ['expressed_milk', 'formula'] as const) {
+      const response = await addEvent(parent, {
+        type: 'FEEDING',
+        startedAt,
+        amount: 90,
+        unit: 'ml',
+        feeding: { kind },
+      });
+      expect(response.status, kind).toBe(201);
+      expect(response.body.event.feeding).toEqual({ kind });
+      expect(response.body.event.amount).toBe(90);
+    }
+  });
+
+  it('refuses a volume on a breastfeed and a bottle without one, storing nothing', async () => {
+    const parent = await withBaby();
+    const breastWithAmount = await addEvent(parent, {
+      type: 'FEEDING',
+      startedAt,
+      amount: 50,
+      feeding: { kind: 'breast' },
+    });
+    const formulaWithout = await addEvent(parent, {
+      type: 'FEEDING',
+      startedAt,
+      feeding: { kind: 'formula' },
+    });
+    const sleepWithKind = await addEvent(parent, {
+      type: 'SLEEP',
+      startedAt,
+      feeding: { kind: 'breast' },
+    });
+
+    expect(breastWithAmount.status).toBe(422);
+    expect(formulaWithout.status).toBe(422);
+    expect(sleepWithKind.status).toBe(422);
+    expect(await BabyEvent.countDocuments({ babyId: parent.babyId })).toBe(0);
+  });
+
+  it('applies the same rules to a both-babies feeding', async () => {
+    const parent = await withBaby('Twin A');
+    await addSibling(parent, 'Twin B');
+    const bad = await request(app)
+      .post(eventGroupsUrl(parent.familyId))
+      .set('Authorization', parent.bearer)
+      .send({ type: 'FEEDING', startedAt, amount: 40, feeding: { kind: 'breast' } });
+    expect(bad.status).toBe(422);
+
+    const good = await request(app)
+      .post(eventGroupsUrl(parent.familyId))
+      .set('Authorization', parent.bearer)
+      .send({ type: 'FEEDING', startedAt, feeding: { kind: 'breast', side: 'both' } });
+    expect(good.status).toBe(201);
+    for (const event of good.body.group.events) {
+      expect(event.feeding).toEqual({ kind: 'breast', side: 'both' });
+    }
+  });
+
+  it('turns a bottle into a breastfeed when the volume is cleared with it', async () => {
+    const parent = await withBaby();
+    const event = await existingEvent(parent, {
+      type: 'FEEDING',
+      startedAt,
+      amount: 120,
+      unit: 'ml',
+      feeding: { kind: 'formula' },
+    });
+
+    const refused = await patchEvent(parent, event.id, { feeding: { kind: 'breast' } });
+    expect(refused.status).toBe(422);
+    const unchanged = await BabyEvent.findById(event.id).lean();
+    expect(unchanged?.feeding?.kind).toBe('formula');
+    expect(unchanged?.amount).toBe(120);
+
+    const edited = await patchEvent(parent, event.id, {
+      type: 'FEEDING',
+      feeding: { kind: 'breast', side: 'right' },
+      amount: null,
+      unit: null,
+      endedAt: '2026-10-09T06:15:00.000Z',
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body.event.feeding).toEqual({ kind: 'breast', side: 'right' });
+    expect(edited.body.event.amount).toBeUndefined();
+    expect(edited.body.event.unit).toBeUndefined();
+
+    const stored = await BabyEvent.findById(event.id).lean();
+    expect(stored).not.toHaveProperty('amount');
+    expect(stored).not.toHaveProperty('unit');
+  });
+
+  it('turns a breastfeed into a bottle only with a volume, and can clear its end', async () => {
+    const parent = await withBaby();
+    const event = await existingEvent(parent, {
+      type: 'FEEDING',
+      startedAt,
+      endedAt: '2026-10-09T06:20:00.000Z',
+      feeding: { kind: 'breast', side: 'left' },
+    });
+
+    expect(
+      (await patchEvent(parent, event.id, { feeding: { kind: 'expressed_milk' } })).status,
+    ).toBe(422);
+
+    const edited = await patchEvent(parent, event.id, {
+      feeding: { kind: 'expressed_milk' },
+      amount: 70,
+      unit: 'ml',
+      endedAt: null,
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body.event.feeding).toEqual({ kind: 'expressed_milk' });
+    expect(edited.body.event.endedAt).toBeUndefined();
+  });
+
+  it('leaves an older feeding without a kind exactly as editable as before', async () => {
+    const parent = await withBaby();
+    const event = await existingEvent(parent, {
+      type: 'FEEDING',
+      startedAt,
+      amount: 100,
+      unit: 'ml',
+    });
+    const edited = await patchEvent(parent, event.id, { amount: 110 });
+    expect(edited.status).toBe(200);
+    expect(edited.body.event.feeding).toBeUndefined();
+  });
+});

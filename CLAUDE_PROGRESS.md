@@ -317,3 +317,49 @@ On top of `a1ce9a2`. Not committed.
 
 Untested here: `familyData.int.test.ts` is written but unrun (no MongoDB in
 the sandbox) — run `npm run test:integration`.
+
+---
+
+## Feeding kinds and the daily feeding summary (2026-10-09)
+
+On top of the 2026-10-08 family-data work. Not committed.
+
+- **Kinds.** A feeding is `breast`, `expressed_milk` or `formula`
+  (`FEEDING_KINDS`; the unused `FEEDING_METHODS`/`BOTTLE_CONTENTS` are gone).
+  Stored in a new optional `feeding` object on the event — the first typed
+  per-type data (`ARCHITECTURE_PROPOSAL.md` §5.5): `{ kind: 'breast', side? }`
+  or `{ kind: 'expressed_milk' | 'formula' }`. Feedings recorded before this
+  have no `feeding` and stay valid and unchanged.
+- **Rules** (`eventRuleIssues` in shared): `feeding` only on FEEDING; a
+  breastfeed never has an `amount` (so no volume total can include an invented
+  number); a bottle kind needs one. Checked by the create, both-babies and
+  import schemas, and for PATCH by the service against the event _as it would
+  be_ after the patch.
+- **Clearing.** PATCH now accepts `null` for `endedAt`, `amount`, `unit` =
+  remove the field (absent still = unchanged). Needed when a feeding changes
+  kind: bottle → breast drops the volume, breast → bottle drops the end time.
+- **Form.** Type pills (Breast · Expressed milk · Formula). Breast: optional
+  side, start, optional end with quick +5/10/15/20/30 min; an end that would
+  make a feed longer than 4 h is questioned (usually an end typed before the
+  start, which the next-day rule would read as ~24 h). Bottles: amount + unit as
+  before. A new feeding starts on the kind of the baby's last feeding today.
+  `components/ui/PillRadioGroup.tsx` is the reusable pill radio group.
+- **Summary.** `summariseFeedingDay` / `countDiapers` in
+  `packages/shared/src/feedingSummary.ts` (pure, unit-tested), rendered by
+  `features/tracker/FeedingSummary.tsx` above Today's list: count by kind,
+  time since last, average / shortest / longest interval (start to start),
+  _measured bottle volume_ only, breastfeeding time from the feeds that have an
+  end, wet/dirty nappies, a 24-hour strip and night/morning/afternoon/evening
+  counts. When any breastfeed exists, a neutral note explains that its volume
+  is not measured and points to feedings + nappies + weight + how the baby
+  seems, with the paediatrician. No "enough/not enough" anywhere.
+- **Carry-over.** Today also reads the previous local day (`limit=200`,
+  `previousDayRange` in `day.ts`) so the first interval and "since last" start
+  from yesterday's last feeding. Same query-key prefix, so existing
+  invalidations refresh it. Tests tell the two reads apart by that `limit`.
+- **Test data.** The generator now produces mixed feeding (mostly breast with
+  side and usually an end; expressed milk and formula bottles with volume).
+
+Untested here: the new integration tests in `events.int.test.ts` ("feeding
+kinds") and `familyData.int.test.ts` ("feeding kinds in the data file") are
+written but unrun — run `npm run test:integration`.

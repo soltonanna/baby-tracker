@@ -10,6 +10,7 @@ import { Baby } from '../../models/Baby.js';
 import { BabyEvent } from '../../models/BabyEvent.js';
 import { GrowthMeasurement } from '../../models/GrowthMeasurement.js';
 import type { FamilyScope } from '../../middleware/familyAccess.js';
+import { toFeedingData } from '../events/mappers.js';
 
 /**
  * Export, import and clear of a family's *children's* data: babies, tracker
@@ -61,18 +62,22 @@ export async function exportFamilyData(family: FamilyScope): Promise<FamilyDataE
       createdAt: baby.createdAt.toISOString(),
       updatedAt: baby.updatedAt.toISOString(),
     })),
-    events: events.map((event) => ({
-      babyId: event.babyId.toString(),
-      type: event.type,
-      startedAt: event.startedAt.toISOString(),
-      ...(event.endedAt ? { endedAt: event.endedAt.toISOString() } : {}),
-      ...(event.amount === undefined ? {} : { amount: event.amount }),
-      ...(event.unit ? { unit: event.unit } : {}),
-      ...(event.details ? { details: event.details } : {}),
-      ...(event.groupId ? { groupId: event.groupId } : {}),
-      createdAt: event.createdAt.toISOString(),
-      updatedAt: event.updatedAt.toISOString(),
-    })),
+    events: events.map((event) => {
+      const feeding = toFeedingData(event.feeding);
+      return {
+        babyId: event.babyId.toString(),
+        type: event.type,
+        startedAt: event.startedAt.toISOString(),
+        ...(event.endedAt ? { endedAt: event.endedAt.toISOString() } : {}),
+        ...(event.amount === undefined ? {} : { amount: event.amount }),
+        ...(event.unit ? { unit: event.unit } : {}),
+        ...(event.details ? { details: event.details } : {}),
+        ...(feeding ? { feeding } : {}),
+        ...(event.groupId ? { groupId: event.groupId } : {}),
+        createdAt: event.createdAt.toISOString(),
+        updatedAt: event.updatedAt.toISOString(),
+      };
+    }),
     measurements: measurements.map((m) => ({
       babyId: m.babyId.toString(),
       measuredOn: toCalendarDate(m.measuredOn),
@@ -194,6 +199,7 @@ export async function importFamilyData(
       ...(event.amount === undefined ? {} : { amount: event.amount }),
       ...(event.unit ? { unit: event.unit } : {}),
       ...(event.details ? { details: event.details } : {}),
+      ...(event.feeding ? { feeding: event.feeding } : {}),
       ...(event.groupId ? { groupId: event.groupId } : {}),
       createdAt,
       updatedAt: event.updatedAt ?? createdAt,

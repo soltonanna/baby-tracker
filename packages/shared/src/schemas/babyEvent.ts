@@ -1,5 +1,12 @@
 import { z, type ZodType } from 'zod';
-import { BABY_EVENT_TYPES, DIAPER_KINDS, type BabyEventType } from '../constants.js';
+import {
+  BABY_EVENT_TYPES,
+  BREAST_SIDES,
+  DIAPER_KINDS,
+  FEEDING_KINDS,
+  isMeasuredFeedingKind,
+  type BabyEventType,
+} from '../constants.js';
 
 /**
  * Tracker event input schemas.
@@ -21,6 +28,30 @@ export const eventUnitSchema = z.string().trim().min(1).max(16);
  * Not an authorization field: it groups, it does not grant.
  */
 export const eventGroupIdSchema = z.string().trim().min(1).max(64);
+
+/**
+ * What kind of feeding this was — the first type-specific structured data an
+ * event carries (`ARCHITECTURE_PROPOSAL.md` §5.5).
+ *
+ * A feeding needs two values at once — its kind and, for the breast, a side —
+ * which is the point at which packing them into `details` stops being honest.
+ * So FEEDING gets its own object rather than a token, and the other types keep
+ * the flat fields they already use until they need the same.
+ *
+ * A discriminated union so that `side` only exists where it means something:
+ * a bottle has no side, and a parser that accepted one would store it.
+ *
+ * - `breast`: optional side. Its length is `startedAt` → `endedAt`, derived the
+ *   same way a sleep's is, and optional, because a parent often does not know.
+ *   It has no volume, and `amount` is refused on it (see `eventRuleIssues`).
+ * - `expressed_milk` / `formula`: a bottle, with its volume in the existing
+ *   `amount` field, canonical millilitres (D3).
+ */
+export const feedingDataSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal(FEEDING_KINDS[0]), side: z.enum(BREAST_SIDES).optional() }),
+  z.object({ kind: z.literal(FEEDING_KINDS[1]) }),
+  z.object({ kind: z.literal(FEEDING_KINDS[2]) }),
+]);
 
 /**
  * The event itself, and nothing about whose it is.
@@ -47,7 +78,61 @@ export const babyEventDataSchema = z.object({
   amount: z.number().nonnegative().optional(),
   unit: eventUnitSchema.optional(),
   details: eventDetailsSchema.optional(),
+  /** FEEDING only. Absent on feedings recorded before kinds existed. */
+  feeding: feedingDataSchema.optional(),
 });
+
+/** The fields the cross-field rules read, whichever operation produced them. */
+interface EventRuleSubject {
+  type?: BabyEventType | undefined;
+  amount?: number | null | undefined;
+  feeding?: z.infer<typeof feedingDataSchema> | undefined;
+}
+
+/**
+ * The rules that span more than one field of an event, as messages.
+ *
+ * One function, used by every place that must agree on them: a create, a
+ * both-babies create and an imported file check the body itself, and an edit
+ * checks the event as it *would be* after the patch, in the service, because
+ * only the stored event says what the patch is being applied to.
+ *
+ * - `feeding` belongs to FEEDING and nothing else.
+ * - A breastfeed has no measured volume. Refusing an `amount` here is what keeps
+ *   a daily volume total from ever adding an invented number to measured ones.
+ * - A bottle (expressed milk or formula) has one, so it needs an `amount`.
+ *
+ * A FEEDING with no `feeding` at all is a feeding recorded before kinds existed,
+ * and is left exactly as valid as it was.
+ */
+export function eventRuleIssues(event: EventRuleSubject): string[] {
+  const issues: string[] = [];
+  const { feeding } = event;
+  if (feeding === undefined) {
+    return issues;
+  }
+
+  if (event.type !== undefined && event.type !== 'FEEDING') {
+    issues.push('Only a feeding can say what kind of feeding it was');
+    return issues;
+  }
+
+  const hasAmount = event.amount !== undefined && event.amount !== null;
+  if (feeding.kind === 'breast' && hasAmount) {
+    issues.push('A breastfeed has no measured volume');
+  }
+  if (isMeasuredFeedingKind(feeding.kind) && !hasAmount) {
+    issues.push('A bottle feeding needs an amount');
+  }
+  return issues;
+}
+
+/** `eventRuleIssues` as Zod issues, for the schemas that check a whole body. */
+function checkEventRules(event: EventRuleSubject, ctx: z.RefinementCtx): void {
+  for (const message of eventRuleIssues(event)) {
+    ctx.addIssue({ code: 'custom', message, path: ['feeding'] });
+  }
+}
 
 /**
  * What a create for one baby accepts.
@@ -58,9 +143,17 @@ export const babyEventDataSchema = z.object({
  * documents written by one action can never be told they belong to somebody
  * else's group.
  */
-export const createBabyEventSchema = babyEventDataSchema.extend({
-  groupId: eventGroupIdSchema.optional(),
-});
+export const createBabyEventSchema = babyEventDataSchema
+  .extend({
+    groupId: eventGroupIdSchema.optional(),
+  })
+  .superRefine(checkEventRules);
+
+/**
+ * What the both-babies endpoint accepts: the event's own fields, under the same
+ * cross-field rules as a single create.
+ */
+export const createBothBabiesEventSchema = babyEventDataSchema.superRefine(checkEventRules);
 
 /**
  * What an edit may change.
@@ -89,6 +182,15 @@ export const createBabyEventSchema = babyEventDataSchema.extend({
  */
 export const updateBabyEventSchema = babyEventDataSchema
   .partial()
+  .extend({
+    // `null` clears a field; absent still means unchanged. Needed the moment a
+    // feeding can change kind: a breastfeed edited into a bottle drops its end
+    // time, and a bottle edited into a breastfeed drops its volume. `z.null()`
+    // is tried first, so `null` is never coerced into the epoch.
+    endedAt: z.union([z.null(), z.coerce.date()]).optional(),
+    amount: z.number().nonnegative().nullable().optional(),
+    unit: eventUnitSchema.nullable().optional(),
+  })
   .refine((patch) => Object.keys(patch).some((field) => field !== 'type'), {
     message: 'An update must change at least one field',
   });

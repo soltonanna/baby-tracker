@@ -129,8 +129,28 @@
         "invalidAmount": "Please enter a valid amount.",
         "invalidTime": "Please enter a valid time.",
         "saveFailed": "Could not save the feeding. Please try again.",
-        "updateFailed": "Could not update the feeding. Please try again."
-      }
+        "updateFailed": "Could not update the feeding. Please try again.",
+        "invalidEndTime": "Please enter a valid end time.",
+        "endTooLate": "That end time looks too far from the start. Please check it."
+      },
+      "kind": "Type",
+      "kinds": {
+        "breast": "Breast",
+        "expressed_milk": "Expressed milk",
+        "formula": "Formula"
+      },
+      "side": "Side (optional)",
+      "sides": {
+        "left": "Left",
+        "right": "Right",
+        "both": "Both sides"
+      },
+      "start": "Start",
+      "end": "End (optional)",
+      "quickDuration": "Quick duration",
+      "plusMinutes": "{{minutes}} min",
+      "clearEnd": "No end time",
+      "endOptional": "Not sure how long? Leave the end empty — the start time is enough."
     },
     "duration": {
       "hoursMinutes": "{{hours}}h {{minutes}}m",
@@ -201,7 +221,39 @@
     },
     "addMeasurement": "Add measurement",
     "measurementSaved": "Measurement saved.",
-    "viewGrowth": "See growth"
+    "viewGrowth": "See growth",
+    "summary": {
+      "title": "Feedings today",
+      "feedings": "Feedings: {{count}}",
+      "sinceLast": "Last one {{duration}} ago",
+      "noFeedings": "No feedings recorded yet today.",
+      "byKind": "Feedings by type",
+      "kinds": {
+        "breast": "Breast",
+        "expressed_milk": "Expressed milk",
+        "formula": "Formula",
+        "unspecified": "Bottle"
+      },
+      "averageInterval": "Average interval",
+      "intervalRange": "Shortest – longest",
+      "notEnough": "—",
+      "bottleVolume": "Bottle volume (measured)",
+      "bottleVolumeValue": "{{volume}} · bottles: {{count}}",
+      "noBottles": "No bottles",
+      "breastTime": "Breastfeeding time",
+      "breastTimeValue": "{{duration}} · timed {{timed}} of {{count}}",
+      "notTimed": "Not timed",
+      "diapers": "Nappies",
+      "diapersValue": "wet {{wet}} · dirty {{dirty}}",
+      "distribution": "Through the day",
+      "periods": {
+        "night": "Night",
+        "morning": "Morning",
+        "afternoon": "Afternoon",
+        "evening": "Evening"
+      },
+      "breastNote": "Breastfeeding volume isn't measured, so it isn't in the bottle volume. Feedings, wet and dirty nappies, weight over time and how your baby seems say more together — your paediatrician can help you read them."
+    }
   },
   "settings": {
     "language": "Language",

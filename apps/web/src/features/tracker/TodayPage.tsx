@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { DEFAULT_UNITS, type BabyEvent, type BabyEventType } from '@baby-tracker/shared';
+import {
+  DEFAULT_UNITS,
+  type BabyEvent,
+  type BabyEventType,
+  type FeedingKind,
+} from '@baby-tracker/shared';
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthContext.js';
 import { Button } from '../../components/ui/Button.js';
@@ -10,7 +15,7 @@ import { Spinner } from '../../components/ui/Spinner.js';
 import { queryKeys } from '../../services/queryKeys.js';
 import { RulerIcon } from '../../components/ui/icons.js';
 import { GrowthForm } from '../growth/GrowthForm.js';
-import { currentDayRange, currentLocalDate, trackerTimeZone } from './day.js';
+import { currentDayRange, currentLocalDate, previousDayRange, trackerTimeZone } from './day.js';
 import { fetchBabies, fetchBabyEvents, fetchFamilies } from './api.js';
 import { AddBabyForm } from './AddBabyForm.js';
 import { BabySelector } from './BabySelector.js';
@@ -20,6 +25,7 @@ import { EventList } from './EventList.js';
 import { EventTypeIcon } from './EventTypeIcon.js';
 import { DiaperForm } from './DiaperForm.js';
 import { FeedingForm } from './FeedingForm.js';
+import { FeedingSummary } from './FeedingSummary.js';
 import { NoteForm } from './NoteForm.js';
 import { SleepForm } from './SleepForm.js';
 
@@ -30,7 +36,9 @@ import { SleepForm } from './SleepForm.js';
  * page asks the API for the events that started between this day's first
  * instant and the next day's, worked out from the shared calendar helpers in
  * `day.ts`. There is no date navigation — today is the only day this screen
- * shows — and no daily totals yet.
+ * shows. Above the list, `FeedingSummary` sums up the day's feedings and
+ * nappies from the same events, plus yesterday's last feeding for the first
+ * interval.
  *
  * Notes, feedings, sleeps and nappy changes can be added, edited and deleted,
  * each for one baby or for both of them at once; the remaining event types come
@@ -76,6 +84,17 @@ const FORM_FOR_EVENT: Record<BabyEventType, EventFormKind> = {
   NOTE: 'note',
 };
 
+/**
+ * Enough of the previous day to be sure of holding its last feeding: the list
+ * is newest first, so this only matters on a day with a great many events after
+ * that feeding. 200 is the endpoint's own maximum.
+ */
+const PREVIOUS_DAY_LIMIT = 200;
+
+/** The newest feeding in a newest-first list, if there is one. */
+const latestFeeding = (events: BabyEvent[] | undefined): BabyEvent | undefined =>
+  events?.find((candidate) => candidate.type === 'FEEDING');
+
 export function TodayPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -84,7 +103,9 @@ export function TodayPage() {
   // clock, identical all day, so the query key hashes the same and nothing
   // refetches — and when the clock does roll past midnight, the next render
   // asks for the new day rather than holding yesterday's until a reload.
-  const today = currentDayRange(trackerTimeZone(user?.timezone));
+  const timeZone = trackerTimeZone(user?.timezone);
+  const today = currentDayRange(timeZone);
+  const yesterday = previousDayRange(timeZone);
 
   const familiesQuery = useQuery({
     queryKey: queryKeys.families,
@@ -117,6 +138,17 @@ export function TodayPage() {
   const eventsQuery = useQuery({
     queryKey: queryKeys.babyEvents(familyId ?? '', selectedBabyId ?? '', today),
     queryFn: () => fetchBabyEvents(familyId ?? '', selectedBabyId ?? '', today),
+    enabled: familyId !== undefined && selectedBabyId !== null,
+  });
+
+  // Only for the feeding summary's carry-over: when yesterday's last feeding
+  // began. Keyed like any other day of this baby's events, so every existing
+  // invalidation after a create, edit or delete refreshes it too. A failure
+  // here costs the summary one interval, never the screen.
+  const previousDayQuery = useQuery({
+    queryKey: queryKeys.babyEvents(familyId ?? '', selectedBabyId ?? '', yesterday),
+    queryFn: () =>
+      fetchBabyEvents(familyId ?? '', selectedBabyId ?? '', yesterday, PREVIOUS_DAY_LIMIT),
     enabled: familyId !== undefined && selectedBabyId !== null,
   });
 
@@ -153,6 +185,8 @@ export function TodayPage() {
   // takes the selected baby's colour, so it is always clear whose day this is.
   const selectedTone = selectedBabyId === null ? undefined : babyTones(babies).get(selectedBabyId);
   const selectedBaby = babies.find((candidate) => candidate.id === selectedBabyId);
+  // A new feeding starts on the kind of this baby's last one today.
+  const latestFeedingKind: FeedingKind | undefined = latestFeeding(eventsQuery.data)?.feeding?.kind;
 
   return (
     <div className="space-y-4" data-tone={selectedTone}>
@@ -206,6 +240,7 @@ export function TodayPage() {
           babyId={selectedBabyId}
           babies={babies}
           event={openForm.event}
+          defaultKind={latestFeedingKind}
           onSaved={() => {
             setOpenForm(null);
           }}
@@ -348,6 +383,16 @@ export function TodayPage() {
             {t('today.addBaby')}
           </Button>
         </div>
+      )}
+
+      {eventsQuery.data === undefined ? null : (
+        <FeedingSummary
+          events={eventsQuery.data}
+          day={today}
+          timeZone={timeZone}
+          previousFeedingAt={latestFeeding(previousDayQuery.data)?.startedAt}
+          volumeUnit={user?.units.volume ?? DEFAULT_UNITS.volume}
+        />
       )}
 
       <Card title={t('today.todayEvents')} className="border-tone-line">

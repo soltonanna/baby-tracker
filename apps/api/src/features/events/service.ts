@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import mongoose, { Types, type QueryFilter } from 'mongoose';
 import {
   babyEventFieldsSchemaFor,
+  eventRuleIssues,
   type BabyEvent as BabyEventDto,
   type BabyEventData,
   type BabyEventGroup,
@@ -18,7 +19,7 @@ import {
 import { conflict, notFound, unprocessable } from '../../lib/httpError.js';
 import type { FamilyScope } from '../../middleware/familyAccess.js';
 import type { BabyScope } from '../../middleware/babyAccess.js';
-import { toBabyEvent } from './mappers.js';
+import { toBabyEvent, toFeedingData } from './mappers.js';
 
 /**
  * Every function takes the resolved family and baby, never ids from the request
@@ -68,6 +69,7 @@ function eventFieldsOf(input: BabyEventData): Partial<BabyEventAttributes> {
     ...(input.amount === undefined ? {} : { amount: input.amount }),
     ...(input.unit ? { unit: input.unit } : {}),
     ...(input.details ? { details: input.details } : {}),
+    ...(input.feeding ? { feeding: input.feeding } : {}),
   };
 }
 
@@ -250,17 +252,35 @@ export async function updateEvent(
   if (input.startedAt !== undefined) {
     event.startedAt = input.startedAt;
   }
+  // `null` clears, absent leaves alone. Assigning `undefined` is how Mongoose
+  // unsets a path, so a cleared field is removed rather than stored as null.
   if (input.endedAt !== undefined) {
-    event.endedAt = input.endedAt;
+    event.endedAt = input.endedAt ?? undefined;
   }
   if (input.amount !== undefined) {
-    event.amount = input.amount;
+    event.amount = input.amount ?? undefined;
   }
   if (input.unit !== undefined) {
-    event.unit = input.unit;
+    event.unit = input.unit ?? undefined;
   }
   if (input.details !== undefined) {
     event.details = input.details;
+  }
+  if (input.feeding !== undefined) {
+    event.feeding = input.feeding;
+  }
+
+  // The cross-field feeding rules, against the event as it *would* be: a patch
+  // that only changes the kind to formula is fine on a feeding that already has
+  // an amount and refused on one that has none, and only the stored event can
+  // say which. Checked before saving, so a refused edit changes nothing.
+  const issues = eventRuleIssues({
+    type: event.type,
+    amount: event.amount,
+    feeding: toFeedingData(event.feeding),
+  });
+  if (issues.length > 0) {
+    throw unprocessable(issues.join('; '));
   }
 
   await event.save();

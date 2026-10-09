@@ -21,15 +21,17 @@ function formatWhen(event: BabyEvent, locale: string): string {
 }
 
 /**
- * How long a sleep lasted, in whole minutes split into hours and minutes.
+ * How long a sleep or a breastfeed lasted, in whole minutes split into hours
+ * and minutes.
  *
  * Derived here rather than stored: `startedAt` and `endedAt` are the record, and
- * a duration written alongside them is a second copy that can disagree. Only
- * SLEEP asks for it — an event type that gains an end of its own can say so
- * then.
+ * a duration written alongside them is a second copy that can disagree. A sleep
+ * and a breastfeed are the two events whose length is part of what they are.
  */
-function sleepDuration(event: BabyEvent): { hours: number; minutes: number } | null {
-  if (event.type !== 'SLEEP' || event.endedAt === undefined) {
+function eventDuration(event: BabyEvent): { hours: number; minutes: number } | null {
+  const hasLength =
+    event.type === 'SLEEP' || (event.type === 'FEEDING' && event.feeding?.kind === 'breast');
+  if (!hasLength || event.endedAt === undefined) {
     return null;
   }
 
@@ -64,6 +66,21 @@ function formatDetails(event: BabyEvent, t: TFunction): string | null {
     return t(`today.diaper.kinds.${details}`);
   }
   return details;
+}
+
+/**
+ * What kind of feeding, as a parent reads it: "Breast · Left", "Formula". `null`
+ * for a feeding recorded before kinds existed, which shows only its amount.
+ */
+function formatFeedingKind(event: BabyEvent, t: TFunction): string | null {
+  const { feeding } = event;
+  if (event.type !== 'FEEDING' || feeding === undefined) {
+    return null;
+  }
+  const kind = t(`today.feeding.kinds.${feeding.kind}`);
+  return feeding.kind === 'breast' && feeding.side !== undefined
+    ? `${kind} · ${t(`today.feeding.sides.${feeding.side}`)}`
+    : kind;
 }
 
 export interface EventListProps {
@@ -116,7 +133,8 @@ function EventRow({
   const [confirming, setConfirming] = useState(false);
 
   const amount = formatAmount(event);
-  const duration = sleepDuration(event);
+  const duration = eventDuration(event);
+  const feedingKind = formatFeedingKind(event, t);
   const details = formatDetails(event, t);
   const typeName = t(`today.eventType.${event.type}`);
 
@@ -160,6 +178,9 @@ function EventRow({
 
           <div className="mt-1 flex items-end justify-between gap-3">
             <div className="min-w-0 space-y-1">
+              {feedingKind === null ? null : (
+                <p className="text-sm font-medium text-ink">{feedingKind}</p>
+              )}
               {amount === null ? null : <p className="text-sm text-ink">{amount}</p>}
               {duration === null ? null : (
                 <p className="text-sm text-ink">

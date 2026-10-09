@@ -18,6 +18,9 @@
  *     clinic visits (all three values, DOCTOR) and home weigh-ins (weight only, PARENT);
  *   - feeding frequency falling and volume rising with age, night feeds dropping
  *     out (earlier for the boy than the girl);
+ *   - mixed feeding: mostly breast (with a side and usually an end time, never a
+ *     volume), plus bottles of expressed milk or formula with a volume — more
+ *     bottles for the boy than the girl, and fewer at night;
  *   - sleeps that cross midnight, nappies of every kind, notes, and grouped
  *     "both babies" entries sharing a `groupId`.
  *
@@ -105,6 +108,7 @@ const BABIES = [
     // z-scores against WHO at corrected age: start → end of the period (catch-up).
     z: { weight: [-0.4, 0.05], length: [-0.5, -0.1], headCircumference: [-0.3, 0.1] },
     nightFeedsUntilDay: 120,
+    bottleShare: 0.4,
   },
   {
     id: 'girl',
@@ -112,6 +116,7 @@ const BABIES = [
     gender: 'FEMALE',
     z: { weight: [-0.75, -0.35], length: [-0.8, -0.45], headCircumference: [-0.6, -0.3] },
     nightFeedsUntilDay: 165,
+    bottleShare: 0.25,
   },
 ];
 
@@ -190,7 +195,21 @@ const MILESTONES = [
   [165, 'boy', 'Sits with support'],
 ];
 
+/**
+ * Mixed feeding, as many twin families do it: mostly at the breast, with
+ * bottles of expressed milk or formula as top-ups — more of them by day, when
+ * someone else can give one. `baby.bottleShare` sets how often.
+ */
+function feedingKindFor(baby, startMs) {
+  const hour = localHour(startMs);
+  const night = hour < 6 || hour >= 22;
+  const bottle = baby.bottleShare * (night ? 0.5 : 1);
+  if (!chance(bottle)) return 'breast';
+  return chance(0.5) ? 'expressed_milk' : 'formula';
+}
+
 function generateBaby(baby) {
+  let side = 'right';
   for (let day = 0; day < dayCount; day += 1) {
     const midnight = localMidnight(calendarDate(day));
     const weightKg = sizeOn(baby, 'weight', day);
@@ -212,13 +231,30 @@ function generateBaby(baby) {
     feeds.forEach((startMs, index) => {
       // The 24–30 h tail is tomorrow's small hours. Each day's loop starts at
       // 06:00, so those night feeds are generated here and only here.
-      const amount = Math.max(10, roundTo(perFeed * between(0.82, 1.15), 5));
-      addEvent(baby.id, {
-        type: 'FEEDING',
-        startedAt: iso(startMs),
-        amount,
-        unit: 'ml',
-      });
+      const feedMinutes = between(15, 30);
+      const kind = feedingKindFor(baby, startMs);
+      if (kind === 'breast') {
+        // No volume — a breastfeed has none to record. A side, usually, and an
+        // end time most of the time: parents often do not note how long.
+        side = side === 'left' ? 'right' : 'left';
+        addEvent(baby.id, {
+          type: 'FEEDING',
+          startedAt: iso(startMs),
+          ...(chance(0.75) ? { endedAt: iso(startMs + Math.round(feedMinutes) * MS_MIN) } : {}),
+          feeding: chance(0.85)
+            ? { kind: 'breast', side: chance(0.15) ? 'both' : side }
+            : { kind: 'breast' },
+        });
+      } else {
+        const amount = Math.max(10, roundTo(perFeed * between(0.82, 1.15), 5));
+        addEvent(baby.id, {
+          type: 'FEEDING',
+          startedAt: iso(startMs),
+          amount,
+          unit: 'ml',
+          feeding: { kind },
+        });
+      }
 
       // Nappy around most feeds; fewer overnight as the baby gets older.
       const nightFeed = localHour(startMs) < 6 || localHour(startMs) >= 23;
@@ -243,7 +279,6 @@ function generateBaby(baby) {
       const next = feeds[index + 1] ?? midnight + MS_DAY + (6 + offset) * MS_HOUR;
       const hour = localHour(startMs);
       const night = hour >= 20 || hour < 6;
-      const feedMinutes = between(15, 30);
       const sleepStart =
         startMs +
         (night ? feedMinutes + between(5, 15) : Math.max(feedMinutes, awakeWindow(day))) * MS_MIN;

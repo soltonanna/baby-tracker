@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { MEASUREMENT_FIELDS, createGrowthMeasurementSchema } from './growth.js';
-import { babyEventDataSchema, eventGroupIdSchema } from './babyEvent.js';
+import { babyEventDataSchema, eventGroupIdSchema, eventRuleIssues } from './babyEvent.js';
 import { createBabySchema, gestationalAgeSchema } from './baby.js';
 
 /**
@@ -41,12 +41,24 @@ export const familyDataBabySchema = createBabySchema.extend({
   updatedAt: optionalInstant,
 });
 
-export const familyDataEventSchema = babyEventDataSchema.extend({
-  babyId: fileRefSchema,
-  groupId: eventGroupIdSchema.optional(),
-  createdAt: optionalInstant,
-  updatedAt: optionalInstant,
-});
+/**
+ * Same value rules as a create, including the cross-field feeding rules, so an
+ * imported file can never hold a feeding the app itself would refuse. A file
+ * from before feeding kinds existed has no `feeding` on any event and stays
+ * valid — the field is optional, so the format version does not change.
+ */
+export const familyDataEventSchema = babyEventDataSchema
+  .extend({
+    babyId: fileRefSchema,
+    groupId: eventGroupIdSchema.optional(),
+    createdAt: optionalInstant,
+    updatedAt: optionalInstant,
+  })
+  .superRefine((event, ctx) => {
+    for (const message of eventRuleIssues(event)) {
+      ctx.addIssue({ code: 'custom', message, path: ['feeding'] });
+    }
+  });
 
 /**
  * Same value rules as a create — canonical grams and millimetres within

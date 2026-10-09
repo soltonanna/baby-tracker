@@ -13,6 +13,7 @@ import type {
   FamilyListResponse,
   FamilyResponse,
   FamilyWithRole,
+  FeedingData,
   IsoDateTime,
   UpdateBabyInput,
 } from '@baby-tracker/shared';
@@ -84,8 +85,13 @@ export async function fetchBabyEvents(
   familyId: string,
   babyId: string,
   range?: DayRange,
+  limit?: number,
 ): Promise<BabyEvent[]> {
-  const query = range === undefined ? '' : `?${new URLSearchParams({ ...range }).toString()}`;
+  const params = new URLSearchParams({
+    ...(range ?? {}),
+    ...(limit === undefined ? {} : { limit: String(limit) }),
+  }).toString();
+  const query = params.length === 0 ? '' : `?${params}`;
   const { events } = await apiFetch<BabyEventListResponse>(
     `/families/${familyId}/babies/${babyId}/events${query}`,
   );
@@ -106,6 +112,8 @@ export interface CreateBabyEventPayload {
   amount?: number;
   unit?: string;
   details?: string;
+  /** FEEDING only: breast (with an optional side), expressed milk or formula. */
+  feeding?: FeedingData;
 }
 
 export async function createBabyEvent(
@@ -151,7 +159,14 @@ export async function createBothBabiesEvent(
  * — `type` included, as long as it still matches the stored one. `familyId` and
  * `babyId` stay in the path here too, so an edit can never re-home an event.
  */
-export type UpdateBabyEventPayload = Partial<CreateBabyEventPayload>;
+export type UpdateBabyEventPayload = Partial<
+  Omit<CreateBabyEventPayload, 'endedAt' | 'amount' | 'unit'>
+> & {
+  /** `null` removes a stored end time, amount or unit; absent leaves it alone. */
+  endedAt?: IsoDateTime | null;
+  amount?: number | null;
+  unit?: string | null;
+};
 
 export async function updateBabyEvent(
   familyId: string,
@@ -196,17 +211,29 @@ export function saveBabyEvent(
   familyId: string,
   target: EventTarget,
   eventId: string | undefined,
-  payload: CreateBabyEventPayload,
+  payload: CreateBabyEventPayload | UpdateBabyEventPayload,
 ): Promise<BabyEvent[]> {
   if (target.kind === 'both') {
     // Both is a create. An edit belongs to the event's own baby — the forms
     // never offer the choice while editing — so this branch cannot be one.
-    return createBothBabiesEvent(familyId, payload).then((group) => group.events);
+    return createBothBabiesEvent(familyId, withoutClears(payload)).then((group) => group.events);
   }
 
   return (
     eventId === undefined
-      ? createBabyEvent(familyId, target.babyId, payload)
+      ? createBabyEvent(familyId, target.babyId, withoutClears(payload))
       : updateBabyEvent(familyId, target.babyId, eventId, payload)
   ).then((event) => [event]);
+}
+
+/**
+ * A create has nothing to clear, so a `null` meant for an edit is dropped
+ * rather than sent. The forms only produce one while editing; this keeps that
+ * true at the one place a body is chosen.
+ */
+function withoutClears(
+  payload: CreateBabyEventPayload | UpdateBabyEventPayload,
+): CreateBabyEventPayload {
+  const entries = Object.entries(payload).filter(([, value]) => value !== null);
+  return Object.fromEntries(entries) as unknown as CreateBabyEventPayload;
 }

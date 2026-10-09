@@ -1,5 +1,12 @@
 import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
-import { BABY_EVENT_TYPES, type BabyEventType } from '@baby-tracker/shared';
+import {
+  BABY_EVENT_TYPES,
+  BREAST_SIDES,
+  FEEDING_KINDS,
+  type BabyEventType,
+  type BreastSide,
+  type FeedingKind,
+} from '@baby-tracker/shared';
 
 /**
  * One collection for every kind of tracker event.
@@ -19,6 +26,8 @@ export interface BabyEventAttributes {
   amount?: number;
   unit?: string;
   details?: string;
+  /** FEEDING only: breast (with an optional side), expressed milk or formula. */
+  feeding?: { kind: FeedingKind; side?: BreastSide };
   /** Shared by events created by one action — the two documents of a twin entry. */
   groupId?: string;
   createdAt: Date;
@@ -26,6 +35,22 @@ export interface BabyEventAttributes {
 }
 
 export type BabyEventDocument = HydratedDocument<BabyEventAttributes> & { _id: Types.ObjectId };
+
+/**
+ * A feeding's kind, as a single nested object without an `_id` of its own.
+ *
+ * The cross-field rules — only on FEEDING, no volume on a breastfeed, a volume
+ * on a bottle — are the shared `eventRuleIssues`, checked by the request
+ * schemas and, for an edit, by the service against the event as it would be.
+ * The model only guards the vocabulary, as it does for `type`.
+ */
+const feedingSchema = new Schema(
+  {
+    kind: { type: String, enum: [...FEEDING_KINDS], required: true },
+    side: { type: String, enum: [...BREAST_SIDES] },
+  },
+  { _id: false },
+);
 
 const babyEventSchema = new Schema<BabyEventAttributes>(
   {
@@ -37,6 +62,7 @@ const babyEventSchema = new Schema<BabyEventAttributes>(
     amount: { type: Number, min: 0 },
     unit: { type: String, trim: true, maxlength: 16 },
     details: { type: String, trim: true, maxlength: 1000 },
+    feeding: { type: feedingSchema },
     groupId: { type: String, trim: true, maxlength: 64 },
   },
   {

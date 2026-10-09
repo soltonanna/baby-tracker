@@ -75,3 +75,19 @@ export function endedAtFrom(time: string, startedAt: string, day: Date): string 
   const nextDay = localDayStart(addLocalDays(toLocalDate(day, timeZone), 1), timeZone);
   return startedAtFrom(time, nextDay);
 }
+
+/**
+ * A wall-clock `HH:MM` moved on by whole minutes, wrapping past midnight — what
+ * a "+15 min" shortcut writes into an end-time field. `null` for a start that is
+ * not a time. The wrap is deliberate: `endedAtFrom` already reads an end earlier
+ * than its start as the next day, so 23:50 + 20 min is 00:10 tomorrow.
+ */
+export function timePlusMinutes(time: string, minutes: number): string | null {
+  const match = TIME_PATTERN.exec(time);
+  if (!match) {
+    return null;
+  }
+  const total = (Number(match[1]) * 60 + Number(match[2]) + minutes) % (24 * 60);
+  const wrapped = total < 0 ? total + 24 * 60 : total;
+  return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+}

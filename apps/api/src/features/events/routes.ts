@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
-  babyEventDataSchema,
   createBabyEventSchema,
+  createBothBabiesEventSchema,
   listBabyEventsQuerySchema,
   updateBabyEventSchema,
 } from '@baby-tracker/shared';
@@ -37,7 +37,8 @@ babyEventRouter.delete('/:eventId', controller.remove);
  * `ARCHITECTURE_PROPOSAL.md` §5.5 sketches, which would address a group by its
  * id here; neither is part of this stage.
  *
- * The body is `babyEventDataSchema`: the event's own fields and nothing else.
+ * The body is `createBothBabiesEventSchema`: the event's own fields and nothing
+ * else, under the same cross-field rules as a single create.
  * No `familyId`, no `babyId`, and no `groupId` — unknown keys are stripped, so a
  * client that sends one is not refused, it simply does not decide anything. The
  * two babies come from the resolved family scope and the grouping id from the
@@ -47,4 +48,4 @@ babyEventRouter.delete('/:eventId', controller.remove);
  */
 export const eventGroupRouter: Router = Router();
 
-eventGroupRouter.post('/', validate({ body: babyEventDataSchema }), controller.createGroup);
+eventGroupRouter.post('/', validate({ body: createBothBabiesEventSchema }), controller.createGroup);

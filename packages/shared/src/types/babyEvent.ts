@@ -1,5 +1,12 @@
-import type { BabyEventType } from '../constants.js';
+import type { BabyEventType, BreastSide } from '../constants.js';
 import type { Id, IsoDateTime } from './common.js';
+
+/**
+ * What kind of feeding a FEEDING event was. Mirrors `feedingDataSchema`; a
+ * breastfeed may say which side, a bottle never does.
+ */
+export type FeedingData =
+  { kind: 'breast'; side?: BreastSide } | { kind: 'expressed_milk' } | { kind: 'formula' };
 
 /** A daily tracker event, as it crosses the wire. */
 export interface BabyEvent {
@@ -12,6 +19,8 @@ export interface BabyEvent {
   amount?: number;
   unit?: string;
   details?: string;
+  /** FEEDING only, and absent on feedings recorded before kinds existed. */
+  feeding?: FeedingData;
   /** Shared by events created together — the two documents of a twin action. */
   groupId?: string;
   createdAt: IsoDateTime;

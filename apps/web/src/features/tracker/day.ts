@@ -13,7 +13,7 @@
  * instants. It also means Today needs no family time zone on the server yet.
  */
 
-import { localDayRange, toLocalDate, type LocalDate } from '@baby-tracker/shared';
+import { addLocalDays, localDayRange, toLocalDate, type LocalDate } from '@baby-tracker/shared';
 import { browserTimeZone } from './eventTime.js';
 
 /** A half-open [from, to) range of instants, as the list endpoint takes them. */
@@ -62,4 +62,13 @@ export function localDayRangeParams(localDate: LocalDate, timeZone: string): Day
 /** The current local calendar day, as that same pair of instants. */
 export function currentDayRange(timeZone: string, now: Date = new Date()): DayRange {
   return localDayRangeParams(currentLocalDate(timeZone, now), timeZone);
+}
+
+/**
+ * The local calendar day before the current one, as the same pair of instants.
+ * Today's feeding summary reads it for one thing only: when the last feeding
+ * before midnight started, so the day's first interval is a real gap.
+ */
+export function previousDayRange(timeZone: string, now: Date = new Date()): DayRange {
+  return localDayRangeParams(addLocalDays(currentLocalDate(timeZone, now), -1), timeZone);
 }

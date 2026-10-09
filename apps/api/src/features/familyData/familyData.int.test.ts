@@ -350,3 +350,47 @@ describe('DELETE .../data', () => {
     expect(response.status).toBe(404);
   });
 });
+
+describe('feeding kinds in the data file', () => {
+  const feedings = [
+    {
+      babyId: 'boy',
+      type: 'FEEDING',
+      startedAt: '2026-04-02T06:00:00.000Z',
+      endedAt: '2026-04-02T06:20:00.000Z',
+      feeding: { kind: 'breast', side: 'left' },
+    },
+    {
+      babyId: 'girl',
+      type: 'FEEDING',
+      startedAt: '2026-04-02T07:00:00.000Z',
+      amount: 80,
+      unit: 'ml',
+      feeding: { kind: 'formula' },
+    },
+  ];
+
+  it('imports and exports them unchanged', async () => {
+    const parent = await withFamily();
+    await importData(parent, testFile({ events: feedings })).expect(200);
+
+    const exported = (await exportData(parent)).body;
+    expect(exported.events.map((e: { feeding?: unknown }) => e.feeding)).toEqual([
+      { kind: 'breast', side: 'left' },
+      { kind: 'formula' },
+    ]);
+  });
+
+  it('refuses a file whose breastfeed carries a volume, and changes nothing', async () => {
+    const parent = await withFamily();
+    await withTwinsAndData(parent);
+
+    const response = await importData(
+      parent,
+      testFile({ events: [{ ...feedings[0], amount: 100 }] }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(await BabyEvent.countDocuments({ familyId: parent.familyId })).toBe(3);
+  });
+});
