@@ -29,7 +29,8 @@
     "format:check": "prettier --check .",
     "verify": "run-s format:check lint typecheck test",
     "test:unit": "npm run build --workspace @baby-tracker/shared && vitest run --project shared --project api-unit --project web-unit --project web-dom",
-    "test:integration": "npm run build --workspace @baby-tracker/shared && vitest run --project api-integration"
+    "test:integration": "npm run build --workspace @baby-tracker/shared && vitest run --project api-integration",
+    "generate:test-data": "npm run build --workspace @baby-tracker/shared && node scripts/generate-test-data.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

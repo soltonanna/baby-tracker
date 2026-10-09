@@ -7,6 +7,7 @@ import { RegisterPage } from '../features/auth/RegisterPage.js';
 import { TodayPage } from '../features/tracker/TodayPage.js';
 import { PlaceholderPage } from '../features/system/PlaceholderPage.js';
 import { NotFoundPage } from '../features/system/NotFoundPage.js';
+import { DataPage } from '../features/data/DataPage.js';
 
 /**
  * Two branches under pathless layout routes.
@@ -46,10 +47,9 @@ const routes: RouteObject[] = [
               Component: (await import('../features/growth/GrowthPage.js')).GrowthPage,
             }),
           },
-          {
-            path: 'more',
-            element: <PlaceholderPage titleKey="nav.more" phase="Phase 6" />,
-          },
+          // More holds the data tools for now: export, import, reset. Settings
+          // and caregivers join it in Phase 6.
+          { path: 'more', Component: DataPage },
           { path: '*', Component: NotFoundPage },
         ],
       },

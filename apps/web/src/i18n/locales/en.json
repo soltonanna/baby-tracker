@@ -323,5 +323,51 @@
       "gestation": "Enter weeks between 22 and 44, and days between 0 and 6.",
       "saveFailed": "Could not save the details. Please try again."
     }
+  },
+  "data": {
+    "title": "Your data",
+    "noFamily": "Create your family on the Today screen first.",
+    "ownerOnly": "Only the family owner can import or clear data.",
+    "cancel": "Cancel",
+    "counts": {
+      "babies": "Babies: {{count}}",
+      "events": "Events: {{count}}",
+      "measurements": "Measurements: {{count}}"
+    },
+    "export": {
+      "title": "Export",
+      "description": "Download everything recorded about the children — babies, daily events and growth — as one file to keep somewhere safe.",
+      "action": "Download backup",
+      "working": "Preparing…",
+      "done": "Downloaded: {{counts}}."
+    },
+    "import": {
+      "title": "Import",
+      "description": "Load a backup or test data file. It replaces all children's data in this family; your account stays as it is.",
+      "choose": "Choose a file…",
+      "confirm": "Replace all current children's data with this file? This cannot be undone — export first if you want to keep it.",
+      "action": "Replace data",
+      "working": "Importing…",
+      "done": "Imported: {{counts}}.",
+      "errors": {
+        "notJson": "This file is not valid JSON.",
+        "invalid": "This is not a Baby Tracker data file, or it is damaged."
+      }
+    },
+    "clear": {
+      "title": "Clear children's data",
+      "description": "Deletes all babies, daily events and growth measurements. Your sign-in and family stay.",
+      "start": "Clear all children's data…",
+      "confirm": "Delete all children's data permanently? This cannot be undone — export first if you want to keep it.",
+      "action": "Delete everything",
+      "working": "Deleting…",
+      "done": "Deleted: {{counts}}."
+    },
+    "errors": {
+      "loadFailed": "Could not load your family. Check your connection and try again.",
+      "exportFailed": "The export failed. Check your connection and try again.",
+      "importFailed": "The import failed and nothing was changed. Try again.",
+      "clearFailed": "Clearing failed and nothing was deleted. Try again."
+    }
   }
 }

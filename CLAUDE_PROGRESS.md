@@ -277,3 +277,43 @@ Not done: head-circumference PDFs are not in `who_standards/` (the daily HC
 table is WHO's, but has no PDF cross-check here); BMI-for-age and
 weight-for-length; comparison beyond 2 years; integration tests are written
 but unrun here — run `npm run test:integration`.
+
+---
+
+## Family data — export, import, reset, test data (2026-10-08)
+
+On top of `a1ce9a2`. Not committed.
+
+- **API.** `/families/:f/data` behind `requireFamilyMembership`:
+  `GET /export` (any member; JSON download, `Cache-Control: no-store`),
+  `POST /import` (OWNER), `DELETE /` (OWNER). Feature in
+  `apps/api/src/features/familyData/`.
+- **Scope.** Babies, tracker events and growth measurements only. User,
+  family, membership and refresh tokens are never touched, so a reset or an
+  import never signs anyone out.
+- **Import replaces, never merges.** Re-importing a file must not duplicate
+  it, and merging would turn twins into four babies (both-babies needs exactly
+  two). Delete + insert run in one transaction, so a bad file changes nothing.
+  Babies get new ObjectIds; file ids are file-local labels mapped on import.
+  `createdAt`/`updatedAt` from the file are kept (`insertMany` with
+  `timestamps: false`), which also keeps the babies' order.
+- **Clear is a hard delete**, including soft-deleted measurements: it is the
+  explicit, confirmed reset. Export is offered first in the UI copy.
+- **File format.** `familyDataSchema` in shared (`format:
+'baby-tracker/family-data'`, `version: 1`), validated by the API and by the
+  web page before anything is sent. Same value rules as the create schemas.
+- **Body size.** The app-wide JSON parser (1 MB) skips the import path; the
+  import route parses up to 25 MB itself, after authentication and the owner
+  check. body-parser errors now map to 413 `PAYLOAD_TOO_LARGE` / 400
+  `INVALID_JSON` instead of 500.
+- **Web.** More tab → `features/data/DataPage.tsx`: Export / Import (file
+  summary, then confirm) / Clear (confirm). Import and clear shown to the owner
+  only. All queries invalidated after import or clear.
+- **Test data.** `npm run generate:test-data` → `test-data/twins-test-data.json`
+  (gitignored): twins Aram (boy) and Ani (girl), born 2026-04-01 at 36+2,
+  every day up to now — ~7k events, grouped "both" notes, 32 growth visits
+  following WHO curves by corrected age. Options: `--birth`, `--until`,
+  `--seed`, `--out`.
+
+Untested here: `familyData.int.test.ts` is written but unrun (no MongoDB in
+the sandbox) — run `npm run test:integration`.
