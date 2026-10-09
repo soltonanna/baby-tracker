@@ -9,6 +9,9 @@ import { notFoundHandler } from './middleware/notFound.js';
 
 export const API_PREFIX = '/api/v1';
 
+/** The one route allowed a body above the app-wide limit; see `familyData/routes.ts`. */
+const FAMILY_DATA_IMPORT_PATH = /^\/api\/v1\/families\/[^/]+\/data\/import\/?$/;
+
 export function createApp(): Express {
   const app = express();
 
@@ -20,7 +23,17 @@ export function createApp(): Express {
   // `credentials: true` is required by decision D6 — the refresh token travels
   // in an httpOnly cookie, so the browser must be allowed to send it.
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
-  app.use(express.json({ limit: '1mb' }));
+  // 1 MB for every request except a family data import, whose route parses its
+  // own, larger body — after authentication and the owner check, so nobody
+  // can make the server parse megabytes without being allowed to import.
+  const jsonBody = express.json({ limit: '1mb' });
+  app.use((req, res, next) => {
+    if (FAMILY_DATA_IMPORT_PATH.test(req.path)) {
+      next();
+      return;
+    }
+    jsonBody(req, res, next);
+  });
   // Unsigned on purpose: the refresh token is already 256 bits of randomness
   // checked against a server-side hash, so a signature adds a second secret
   // and no security (decision D19).

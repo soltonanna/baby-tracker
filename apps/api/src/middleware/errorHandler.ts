@@ -64,6 +64,26 @@ function normalise(error: unknown): NormalisedError {
     };
   }
 
+  // body-parser's own errors: a body over the route's limit, or one that is
+  // not JSON. Client mistakes, so they must not read as a server fault — the
+  // family data import is where a large file can actually reach them.
+  const bodyErrorType =
+    typeof error === 'object' && error !== null && 'type' in error
+      ? (error as { type?: unknown }).type
+      : undefined;
+  if (bodyErrorType === 'entity.too.large') {
+    return {
+      status: 413,
+      body: { error: { code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large' } },
+    };
+  }
+  if (bodyErrorType === 'entity.parse.failed') {
+    return {
+      status: 400,
+      body: { error: { code: 'INVALID_JSON', message: 'The request body is not valid JSON' } },
+    };
+  }
+
   if (
     typeof error === 'object' &&
     error !== null &&
