@@ -4,7 +4,7 @@ import { validate } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requireFamilyMembership } from '../../middleware/familyAccess.js';
 import { babyRouter } from '../babies/routes.js';
-import { eventGroupRouter } from '../events/routes.js';
+import { eventGroupRouter, familyEventRouter } from '../events/routes.js';
 import { familyDataRouter } from '../familyData/routes.js';
 import * as controller from './controller.js';
 
@@ -30,6 +30,10 @@ familyRouter.use('/:familyId/babies', requireFamilyMembership, babyRouter);
 // this path that “both” could be mistaken for. Membership is resolved here too,
 // so the babies it writes to can only be the caller's own.
 familyRouter.use('/:familyId/event-groups', requireFamilyMembership, eventGroupRouter);
+
+// The timeline: every baby's events, read across the family. Membership is
+// resolved here, so a `babyId` in the query can only narrow it.
+familyRouter.use('/:familyId/events', requireFamilyMembership, familyEventRouter);
 
 // Export, import and reset of the children's data. Family-wide rather than
 // per baby: an import creates the babies, and a reset removes them.

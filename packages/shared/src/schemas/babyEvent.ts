@@ -7,6 +7,7 @@ import {
   isMeasuredFeedingKind,
   type BabyEventType,
 } from '../constants.js';
+import { parseEventCursor } from '../eventCursor.js';
 
 /**
  * Tracker event input schemas.
@@ -250,6 +251,59 @@ export const listBabyEventsQuerySchema = z
     message: '"from" must be earlier than "to"',
     path: ['from'],
   });
+
+/**
+ * What the family timeline endpoint accepts.
+ *
+ * - `babyId`: one baby's events only. Absent means every baby in the family —
+ *   the family itself always comes from the resolved membership, so this can
+ *   only narrow.
+ * - `types`: comma-separated (`FEEDING,SLEEP`), or the parameter repeated.
+ *   Absent means every type.
+ * - `before`: a cursor from `eventCursor.ts` — a previous page's `nextCursor`,
+ *   or a bare instant to jump to a date.
+ * - `activeAt`: the sleeps still running at that instant — started before it,
+ *   and ended after it or not ended at all. Only meaningful for a sleep, whose
+ *   missing end means "still asleep"; on a nappy or a note a missing end means
+ *   nothing, so the parameter is refused with any other `types`. It is how a
+ *   daily sleep total finds the sessions that began on an earlier day (D5).
+ * - `limit`: the same bounds as the per-baby list.
+ */
+const OBJECT_ID_PATTERN = /^[0-9a-f]{24}$/;
+
+const eventTypesParamSchema = z
+  .union([z.string(), z.array(z.string())])
+  .transform((value) => (Array.isArray(value) ? value : [value]))
+  .transform((values) => values.flatMap((value) => value.split(',')).map((value) => value.trim()))
+  .pipe(z.array(z.enum(BABY_EVENT_TYPES)).min(1))
+  .transform((types) => [...new Set(types)]);
+
+export const listFamilyEventsQuerySchema = z
+  .object({
+    babyId: z.string().regex(OBJECT_ID_PATTERN, 'Not a baby id').optional(),
+    types: eventTypesParamSchema.optional(),
+    before: z
+      .string()
+      .transform((value, ctx) => {
+        const cursor = parseEventCursor(value);
+        if (cursor === null) {
+          ctx.addIssue({ code: 'custom', message: 'Not a timeline cursor' });
+          return z.NEVER;
+        }
+        return cursor;
+      })
+      .optional(),
+    activeAt: z.coerce.date().optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+  })
+  .refine(
+    (query) =>
+      query.activeAt === undefined ||
+      (query.types !== undefined && query.types.length === 1 && query.types[0] === 'SLEEP'),
+    { message: '"activeAt" is only available with types=SLEEP', path: ['activeAt'] },
+  );
+
+export type ListFamilyEventsQuery = z.infer<typeof listFamilyEventsQuerySchema>;
 
 export type BabyEventData = z.infer<typeof babyEventDataSchema>;
 export type CreateBabyEventInput = z.infer<typeof createBabyEventSchema>;

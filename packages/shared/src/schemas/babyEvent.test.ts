@@ -4,6 +4,7 @@ import {
   babyEventFieldsSchemaFor,
   createBabyEventSchema,
   listBabyEventsQuerySchema,
+  listFamilyEventsQuerySchema,
   updateBabyEventSchema,
 } from './babyEvent.js';
 
@@ -224,5 +225,57 @@ describe('listBabyEventsQuerySchema', () => {
     ]) {
       expect(parseQuery(range).success, JSON.stringify(range)).toBe(false);
     }
+  });
+});
+
+describe('listFamilyEventsQuerySchema', () => {
+  const parseQuery = (query: Record<string, unknown>) =>
+    listFamilyEventsQuerySchema.safeParse(query);
+
+  it('defaults to every baby, every type, the newest page of 50', () => {
+    const result = parseQuery({});
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({ limit: 50 });
+  });
+
+  it('reads types comma-separated or repeated, without duplicates', () => {
+    expect(parseQuery({ types: 'FEEDING,SLEEP,FEEDING' }).data?.types).toEqual([
+      'FEEDING',
+      'SLEEP',
+    ]);
+    expect(parseQuery({ types: ['DIAPER', 'NOTE'] }).data?.types).toEqual(['DIAPER', 'NOTE']);
+  });
+
+  it.each([{ types: '' }, { types: 'BATH' }, { types: 'FEEDING,' }, { types: 'feeding' }])(
+    'refuses types %j',
+    (query) => {
+      expect(parseQuery(query).success).toBe(false);
+    },
+  );
+
+  it('parses a cursor and refuses a malformed one', () => {
+    const cursor = parseQuery({ before: '2026-11-10T08:00:00.000Z_65f0c0ffee0000000000abcd' });
+    expect(cursor.data?.before).toEqual({
+      startedAt: new Date('2026-11-10T08:00:00.000Z'),
+      id: '65f0c0ffee0000000000abcd',
+    });
+    expect(parseQuery({ before: 'last-tuesday' }).success).toBe(false);
+  });
+
+  it('refuses a baby id that is not an id', () => {
+    expect(parseQuery({ babyId: '65f0c0ffee0000000000abcd' }).success).toBe(true);
+    expect(parseQuery({ babyId: 'baby-a' }).success).toBe(false);
+  });
+
+  it.each([0, 201, 1.5, 'many'])('refuses limit %j', (limit) => {
+    expect(parseQuery({ limit }).success).toBe(false);
+  });
+
+  it('allows activeAt only for sleeps', () => {
+    const at = '2026-11-10T00:00:00.000Z';
+    expect(parseQuery({ types: 'SLEEP', activeAt: at }).success).toBe(true);
+    expect(parseQuery({ activeAt: at }).success).toBe(false);
+    expect(parseQuery({ types: 'SLEEP,NOTE', activeAt: at }).success).toBe(false);
+    expect(parseQuery({ types: 'DIAPER', activeAt: at }).success).toBe(false);
   });
 });

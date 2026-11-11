@@ -3,6 +3,7 @@ import {
   createBabyEventSchema,
   createBothBabiesEventSchema,
   listBabyEventsQuerySchema,
+  listFamilyEventsQuerySchema,
   updateBabyEventSchema,
 } from '@baby-tracker/shared';
 import { validate } from '../../middleware/validate.js';
@@ -49,3 +50,13 @@ babyEventRouter.delete('/:eventId', controller.remove);
 export const eventGroupRouter: Router = Router();
 
 eventGroupRouter.post('/', validate({ body: createBothBabiesEventSchema }), controller.createGroup);
+
+/**
+ * Mounted by the family router at /:familyId/events, behind
+ * `requireFamilyMembership`: the timeline across every baby of the family,
+ * cursor-paginated (see `timeline.ts`). Read-only — events are still written
+ * through a baby, or through `event-groups` for both.
+ */
+export const familyEventRouter: Router = Router();
+
+familyEventRouter.get('/', validate({ query: listFamilyEventsQuerySchema }), controller.listFamily);

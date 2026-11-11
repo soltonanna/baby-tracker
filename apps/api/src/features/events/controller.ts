@@ -5,13 +5,16 @@ import type {
   BabyEventListResponse,
   BabyEventResponse,
   CreateBabyEventInput,
+  FamilyEventListResponse,
   ListBabyEventsQuery,
+  ListFamilyEventsQuery,
   UpdateBabyEventInput,
 } from '@baby-tracker/shared';
 import { getFamilyScope } from '../../middleware/familyAccess.js';
 import { getBabyScope } from '../../middleware/babyAccess.js';
 import { validatedQuery } from '../../middleware/validate.js';
 import * as eventService from './service.js';
+import { listFamilyEvents } from './timeline.js';
 
 /**
  * Express 5 types a route parameter as string | string[]; anything that is not a
@@ -86,4 +89,18 @@ export const remove: RequestHandler = async (req, res) => {
   await eventService.deleteEvent(getFamilyScope(req), getBabyScope(req), eventIdOf(req));
 
   res.status(204).send();
+};
+
+/**
+ * The family timeline. Family-scoped like `createGroup`: the babies it may read
+ * are the ones in the family the caller's membership was resolved against, and
+ * a `babyId` in the query can only narrow that.
+ */
+export const listFamily: RequestHandler = async (req, res) => {
+  const page = await listFamilyEvents(
+    getFamilyScope(req),
+    validatedQuery<ListFamilyEventsQuery>(res),
+  );
+
+  res.status(200).json(page satisfies FamilyEventListResponse);
 };

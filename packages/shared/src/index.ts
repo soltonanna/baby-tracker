@@ -15,3 +15,4 @@ export * from './schemas/familyData.js';
 export * from './units.js';
 export * from './time.js';
 export * from './feedingSummary.js';
+export * from './eventCursor.js';

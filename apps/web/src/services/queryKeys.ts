@@ -19,6 +19,17 @@ export const queryKeys = {
     range === undefined
       ? (['families', familyId, 'babies', babyId, 'events'] as const)
       : (['families', familyId, 'babies', babyId, 'events', range] as const),
+  /**
+   * The family timeline: every baby's events, cursor-paginated.
+   *
+   * The filters are the last segment, so `familyEvents(familyId)` is a prefix of
+   * every filtered list and one invalidation refreshes whichever filters are on
+   * screen — the same property `babyEvents` has for a day.
+   */
+  familyEvents: (familyId: string, filters?: object) =>
+    filters === undefined
+      ? (['families', familyId, 'events'] as const)
+      : (['families', familyId, 'events', filters] as const),
   /** One baby's growth measurements — the whole series, never by day. */
   growth: (familyId: string, babyId: string) =>
     ['families', familyId, 'babies', babyId, 'growth'] as const,

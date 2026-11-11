@@ -5,8 +5,8 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Button } from '../../components/ui/Button.js';
 import { PencilIcon, TrashIcon } from '../../components/ui/icons.js';
-import { queryKeys } from '../../services/queryKeys.js';
 import { deleteBabyEvent } from './api.js';
+import { refreshEventsFor } from './eventTarget.js';
 import { EventTypeIcon } from './EventTypeIcon.js';
 import { EVENT_TYPE_BUBBLE } from './eventTypeBubble.js';
 
@@ -115,17 +115,21 @@ export function EventList({ events, familyId, babyId, onEdit }: EventListProps) 
  * the form belongs to the page, above the list, which is where every other entry
  * form already opens.
  */
-function EventRow({
-  event,
-  familyId,
-  babyId,
-  onEdit,
-}: {
+export interface EventRowProps {
   event: BabyEvent;
   familyId: string;
   babyId: string;
   onEdit: (event: BabyEvent) => void;
-}) {
+  /**
+   * Whose event this is, shown beside its type — for a list that holds more
+   * than one baby's events. Today's list is one baby's and passes none.
+   */
+  marker?: ReactNode;
+  /** The baby's name, added to the edit and delete labels when several babies share a list. */
+  babyName?: string;
+}
+
+export function EventRow({ event, familyId, babyId, onEdit, marker, babyName }: EventRowProps) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
 
@@ -137,16 +141,17 @@ function EventRow({
   const feedingKind = formatFeedingKind(event, t);
   const details = formatDetails(event, t);
   const typeName = t(`today.eventType.${event.type}`);
+  // Two rows of the same type for two babies must not share one accessible name.
+  const actionSubject = babyName === undefined ? typeName : `${typeName} (${babyName})`;
 
   const remove = useMutation({
     mutationFn: () => deleteBabyEvent(familyId, babyId, event.id),
     onSuccess: async () => {
       // Awaited: the row goes when the refreshed list no longer holds it, so
       // nothing disappears from the screen before the API has agreed. Only this
-      // baby's events are invalidated — the other twin's list is untouched.
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.babyEvents(familyId, babyId),
-      });
+      // baby's events are invalidated — the other twin's list is untouched —
+      // together with the family timeline, which holds this row too.
+      await refreshEventsFor(queryClient, familyId, [babyId]);
     },
   });
 
@@ -170,7 +175,10 @@ function EventRow({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
-            <span className="font-semibold text-ink">{typeName}</span>
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-semibold text-ink">{typeName}</span>
+              {marker}
+            </span>
             <time dateTime={event.startedAt} className="text-sm text-muted">
               {formatWhen(event, i18n.language)}
             </time>
@@ -199,7 +207,7 @@ function EventRow({
             {confirming ? null : (
               <div className="-my-1 flex shrink-0 items-center gap-1">
                 <IconButton
-                  label={t('today.event.edit', { type: typeName })}
+                  label={t('today.event.edit', { type: actionSubject })}
                   onClick={() => {
                     onEdit(event);
                   }}
@@ -207,7 +215,7 @@ function EventRow({
                   <PencilIcon className="h-5 w-5" />
                 </IconButton>
                 <IconButton
-                  label={t('today.event.delete', { type: typeName })}
+                  label={t('today.event.delete', { type: actionSubject })}
                   onClick={() => {
                     // A previous failure is not part of the new question.
                     remove.reset();

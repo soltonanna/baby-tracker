@@ -39,7 +39,8 @@ export function targetBabyIds(target: EventTarget, babies: readonly Baby[]): str
 }
 
 /**
- * Refreshes the day on screen for each of those babies.
+ * Refreshes the day on screen for each of those babies, and the family
+ * timeline.
  *
  * `queryKeys.babyEvents(familyId, babyId)` without a range is a prefix of every
  * dated key, so this refreshes whichever day each list is showing without this
@@ -51,15 +52,20 @@ export function targetBabyIds(target: EventTarget, babies: readonly Baby[]): str
  * mounted, so its invalidation resolves at once and it refetches the moment the
  * parent switches to it — which is what makes a "both" entry appear there
  * without a reload.
+ *
+ * The timeline holds every baby's events in one list, so any change to any of
+ * them refreshes it. This is the one place every save and delete goes through,
+ * which is what keeps Today and Timeline from ever showing different data.
  */
 export async function refreshEventsFor(
   queryClient: QueryClient,
   familyId: string,
   babyIds: readonly string[],
 ): Promise<void> {
-  await Promise.all(
-    babyIds.map((babyId) =>
+  await Promise.all([
+    ...babyIds.map((babyId) =>
       queryClient.invalidateQueries({ queryKey: queryKeys.babyEvents(familyId, babyId) }),
     ),
-  );
+    queryClient.invalidateQueries({ queryKey: queryKeys.familyEvents(familyId) }),
+  ]);
 }

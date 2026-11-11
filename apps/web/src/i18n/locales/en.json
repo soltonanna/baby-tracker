@@ -255,6 +255,41 @@
       "breastNote": "Breastfeeding volume isn't measured, so it isn't in the bottle volume. Feedings, wet and dirty nappies, weight over time and how your baby seems say more together — your paediatrician can help you read them."
     }
   },
+  "timeline": {
+    "loading": "Loading the timeline…",
+    "loadFailed": "Could not load your family. Check your connection and try again.",
+    "setUp": "The timeline starts once your family and a baby are set up.",
+    "goToToday": "Go to Today",
+    "eventsFailed": "Could not load the timeline.",
+    "retry": "Try again",
+    "empty": "No entries yet. Everything you record on Today appears here.",
+    "emptyFiltered": "Nothing matches these filters.",
+    "emptyBefore": "Nothing was recorded on or before this date.",
+    "showEarlier": "Show earlier",
+    "loadingEarlier": "Loading…",
+    "earlierFailed": "Could not load earlier entries. Try again.",
+    "end": "That is the start of the timeline.",
+    "bothBabies": "Both babies",
+    "day": {
+      "today": "Today",
+      "yesterday": "Yesterday"
+    },
+    "summary": {
+      "label": "Day summary",
+      "pending": "The summary appears once the whole day is loaded.",
+      "feedings": "Feedings: {{count}}",
+      "sleep": "Sleep: {{duration}}",
+      "diapers": "Nappies: {{count}}"
+    },
+    "filters": {
+      "baby": "Whose entries",
+      "both": "Both",
+      "all": "All",
+      "types": "Entry types",
+      "date": "Go to date",
+      "latest": "Back to latest"
+    }
+  },
   "settings": {
     "language": "Language",
     "theme": "Appearance",

@@ -1,12 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import {
-  DEFAULT_UNITS,
-  type BabyEvent,
-  type BabyEventType,
-  type FeedingKind,
-} from '@baby-tracker/shared';
+import { DEFAULT_UNITS, type BabyEvent, type FeedingKind } from '@baby-tracker/shared';
 import { Link } from 'react-router';
 import { useAuth } from '../auth/AuthContext.js';
 import { Button } from '../../components/ui/Button.js';
@@ -21,13 +16,11 @@ import { AddBabyForm } from './AddBabyForm.js';
 import { BabySelector } from './BabySelector.js';
 import { babyTones } from './babyTone.js';
 import { CreateFamilyForm } from './CreateFamilyForm.js';
+import { EventEditor } from './EventEditor.js';
+import { editFormFor, type EventFormState } from './eventForm.js';
 import { EventList } from './EventList.js';
 import { EventTypeIcon } from './EventTypeIcon.js';
-import { DiaperForm } from './DiaperForm.js';
-import { FeedingForm } from './FeedingForm.js';
 import { FeedingSummary } from './FeedingSummary.js';
-import { NoteForm } from './NoteForm.js';
-import { SleepForm } from './SleepForm.js';
 
 /**
  * The daily tracker: pick a baby, see what happened to them today.
@@ -54,35 +47,18 @@ import { SleepForm } from './SleepForm.js';
  */
 
 /**
- * Which entry form is open, if any. One value rather than a flag per form: only
- * one form is ever open, and a union says so instead of relying on every flag
- * being cleared whenever another is set.
+ * Which form is open, if any. One value rather than a flag per form: only one
+ * form is ever open, and a union says so instead of relying on every flag being
+ * cleared whenever another is set.
  *
- * `baby` is a member of the same union for that reason: adding a baby is not an
- * event, but it is another form that must not be open beside one.
- *
- * An event form carries the event it is editing, when there is one. Kept in the
- * same value rather than in a second piece of state, because the two always
- * change together: opening a form for a different event, or for none, is one
- * decision and one update.
+ * `baby` and `growth` are members of the same union for that reason: neither is
+ * an event, but each is another form that must not be open beside one. The four
+ * event forms, and which of them edits which event, are `EventEditor`'s.
  */
-type EventFormKind = 'note' | 'feeding' | 'sleep' | 'diaper';
+type OpenForm = { kind: 'baby' } | { kind: 'growth' } | EventFormState;
 
-type OpenForm = { kind: 'baby' } | { kind: 'growth' } | { kind: EventFormKind; event?: BabyEvent };
-
-/**
- * Which form edits which kind of event.
- *
- * Each form is also keyed by the event it is editing, so opening one on a
- * different entry — or on a new one — remounts it and its fields start from that
- * entry's values rather than from whatever the previous one left behind.
- */
-const FORM_FOR_EVENT: Record<BabyEventType, EventFormKind> = {
-  FEEDING: 'feeding',
-  SLEEP: 'sleep',
-  DIAPER: 'diaper',
-  NOTE: 'note',
-};
+const isEventForm = (form: OpenForm | null): form is EventFormState =>
+  form !== null && form.kind !== 'baby' && form.kind !== 'growth';
 
 /**
  * Enough of the previous day to be sure of holding its last feeding: the list
@@ -233,60 +209,14 @@ export function TodayPage() {
             setOpenForm(null);
           }}
         />
-      ) : openForm?.kind === 'feeding' && selectedBabyId !== null ? (
-        <FeedingForm
-          key={openForm.event?.id ?? 'new'}
+      ) : isEventForm(openForm) && selectedBabyId !== null ? (
+        <EventEditor
           familyId={familyId}
           babyId={selectedBabyId}
           babies={babies}
-          event={openForm.event}
-          defaultKind={latestFeedingKind}
-          onSaved={() => {
-            setOpenForm(null);
-          }}
-          onCancel={() => {
-            setOpenForm(null);
-          }}
-        />
-      ) : openForm?.kind === 'sleep' && selectedBabyId !== null ? (
-        <SleepForm
-          key={openForm.event?.id ?? 'new'}
-          familyId={familyId}
-          babyId={selectedBabyId}
-          babies={babies}
-          event={openForm.event}
-          onSaved={() => {
-            setOpenForm(null);
-          }}
-          onCancel={() => {
-            setOpenForm(null);
-          }}
-        />
-      ) : openForm?.kind === 'diaper' && selectedBabyId !== null ? (
-        <DiaperForm
-          key={openForm.event?.id ?? 'new'}
-          familyId={familyId}
-          babyId={selectedBabyId}
-          babies={babies}
-          event={openForm.event}
-          onSaved={() => {
-            setOpenForm(null);
-          }}
-          onCancel={() => {
-            setOpenForm(null);
-          }}
-        />
-      ) : openForm?.kind === 'note' && selectedBabyId !== null ? (
-        <NoteForm
-          key={openForm.event?.id ?? 'new'}
-          familyId={familyId}
-          babyId={selectedBabyId}
-          babies={babies}
-          event={openForm.event}
-          onSaved={() => {
-            setOpenForm(null);
-          }}
-          onCancel={() => {
+          form={openForm}
+          defaultFeedingKind={latestFeedingKind}
+          onClose={() => {
             setOpenForm(null);
           }}
         />
@@ -410,7 +340,7 @@ export function TodayPage() {
             familyId={familyId}
             babyId={selectedBabyId ?? ''}
             onEdit={(event) => {
-              setOpenForm({ kind: FORM_FOR_EVENT[event.type], event });
+              setOpenForm(editFormFor(event));
             }}
           />
         )}

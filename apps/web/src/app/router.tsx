@@ -5,7 +5,7 @@ import { PublicOnlyRoute } from '../features/auth/PublicOnlyRoute.js';
 import { LoginPage } from '../features/auth/LoginPage.js';
 import { RegisterPage } from '../features/auth/RegisterPage.js';
 import { TodayPage } from '../features/tracker/TodayPage.js';
-import { PlaceholderPage } from '../features/system/PlaceholderPage.js';
+import { TimelinePage } from '../features/timeline/TimelinePage.js';
 import { NotFoundPage } from '../features/system/NotFoundPage.js';
 import { DataPage } from '../features/data/DataPage.js';
 
@@ -33,10 +33,7 @@ const routes: RouteObject[] = [
         Component: AppShell,
         children: [
           { index: true, Component: TodayPage },
-          {
-            path: 'timeline',
-            element: <PlaceholderPage titleKey="nav.timeline" phase="Phase 2" />,
-          },
+          { path: 'timeline', Component: TimelinePage },
           // Growth is the first Health section; medical history, vaccinations
           // and appointments join it later.
           // Lazy: the screen carries the WHO tables, which the daily tracker

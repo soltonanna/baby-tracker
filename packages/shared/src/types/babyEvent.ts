@@ -36,6 +36,24 @@ export interface BabyEventListResponse {
 }
 
 /**
+ * A page of the family timeline.
+ *
+ * `events` is the page — at most `limit` events, newest first by `startedAt`
+ * then id — **plus** the twin siblings of any grouped event in it, wherever they
+ * sort. So a pair is never split by a page boundary, and `events.length` may
+ * exceed `limit`.
+ *
+ * `nextCursor` is taken from the page's own last event, never from an added
+ * sibling, so nothing older is skipped. The price is that a sibling which sorts
+ * after the boundary is sent again by the page that reaches it: a client merges
+ * pages by event id. `null` when there is nothing older.
+ */
+export interface FamilyEventListResponse {
+  events: BabyEvent[];
+  nextCursor: string | null;
+}
+
+/**
  * The events one action wrote for more than one baby, and the id that links
  * them.
  *

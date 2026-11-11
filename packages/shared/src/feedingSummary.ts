@@ -15,7 +15,7 @@
  */
 
 import { DIAPER_KINDS, FEEDING_KINDS, type DiaperKind, type FeedingKind } from './constants.js';
-import { durationSeconds, timeZoneOffsetMs } from './time.js';
+import { durationSeconds, overlapSeconds, timeZoneOffsetMs } from './time.js';
 import type { BabyEvent } from './types/babyEvent.js';
 
 /** The fields the summary reads; a full `BabyEvent` satisfies it. */
@@ -239,4 +239,37 @@ export function countDiapers(events: readonly SummaryEvent[]): DiaperDayCounts {
     if (kind === 'dirty' || kind === 'wet_and_dirty') counts.dirty += 1;
   }
   return counts;
+}
+
+/**
+ * Seconds of sleep inside [rangeStart, rangeEnd), decision D5.
+ *
+ * Each session counts only for the part of it that lies inside the range, so a
+ * night from 22:00 to 06:00 adds two hours to one day and six to the next, and
+ * neither day ever exceeds its own length — 23 or 25 hours on a daylight-saving
+ * day, because the range comes from `localDayRange`.
+ *
+ * A session with no end is still running: it counts up to `now`, and never past
+ * it. Sessions are read from `events` whatever day they started on; the caller
+ * is responsible for passing every sleep that could overlap the range,
+ * including those that began before it.
+ *
+ * Overlapping sessions of the same baby are added up as recorded, not merged:
+ * the sum reports what was entered, and a duplicate entry is visible in the list
+ * rather than silently hidden by the total.
+ */
+export function sleepSecondsInRange(
+  events: readonly SummaryEvent[],
+  rangeStart: Date,
+  rangeEnd: Date,
+  now: Date,
+): number {
+  let total = 0;
+  for (const event of events) {
+    if (event.type !== 'SLEEP') continue;
+    const start = new Date(event.startedAt);
+    const end = event.endedAt === undefined ? now : new Date(event.endedAt);
+    total += overlapSeconds(start, end, rangeStart, rangeEnd);
+  }
+  return total;
 }

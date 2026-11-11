@@ -98,4 +98,18 @@ babyEventSchema.index({ babyId: 1, startedAt: -1 });
  */
 babyEventSchema.index({ groupId: 1 }, { sparse: true });
 
+/**
+ * The family timeline (`features/events/timeline.ts`): every baby of a family,
+ * newest first, with `_id` as the tie-breaker the cursor relies on.
+ */
+babyEventSchema.index({ familyId: 1, startedAt: -1, _id: -1 });
+
+/**
+ * Sleeps still running at an instant (`activeAt` on the timeline), for daily
+ * sleep totals that cross midnight. Partial on SLEEP, so it stays as small as
+ * the number of sleeps; a missing `endedAt` is indexed as null, which is how a
+ * running sleep is found.
+ */
+babyEventSchema.index({ familyId: 1, endedAt: 1 }, { partialFilterExpression: { type: 'SLEEP' } });
+
 export const BabyEvent = model<BabyEventAttributes>('BabyEvent', babyEventSchema);

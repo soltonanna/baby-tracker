@@ -3,6 +3,7 @@ import {
   countDiapers,
   dayPeriodOfHour,
   feedingIntervals,
+  sleepSecondsInRange,
   summariseFeedingDay,
   type SummaryEvent,
 } from './feedingSummary.js';
@@ -188,5 +189,61 @@ describe('countDiapers', () => {
         breast('09:00'),
       ]),
     ).toEqual({ total: 6, wet: 3, dirty: 2 });
+  });
+});
+
+describe('sleepSecondsInRange', () => {
+  const sleep = (startedAt: string, endedAt?: string): SummaryEvent => ({
+    type: 'SLEEP',
+    startedAt,
+    ...(endedAt === undefined ? {} : { endedAt }),
+  });
+  const HOUR = 3600;
+  const farFuture = new Date('2030-01-01T00:00:00.000Z');
+
+  it('counts a session inside the day whole', () => {
+    expect(
+      sleepSecondsInRange([sleep(local('13:00'), local('14:30'))], dayStart, dayEnd, farFuture),
+    ).toBe(1.5 * HOUR);
+  });
+
+  it('counts only the part of a session that crosses either midnight', () => {
+    const events = [
+      // 22:00 the evening before → 02:00: two hours belong to this day.
+      sleep(new Date(dayStart.getTime() - 2 * HOUR * 1000).toISOString(), local('02:00')),
+      // 23:00 → 07:00 the next morning: one hour belongs to this day.
+      sleep(local('23:00'), new Date(dayEnd.getTime() + 7 * HOUR * 1000).toISOString()),
+    ];
+
+    expect(sleepSecondsInRange(events, dayStart, dayEnd, farFuture)).toBe(3 * HOUR);
+  });
+
+  it('counts a running session up to now, and never past it', () => {
+    const now = new Date(local('15:00'));
+    expect(sleepSecondsInRange([sleep(local('14:00'))], dayStart, dayEnd, now)).toBe(HOUR);
+    // A session still running from the previous day counts from midnight.
+    const lateNow = new Date(dayEnd.getTime() + HOUR * 1000);
+    const yesterday = new Date(dayStart.getTime() - HOUR * 1000).toISOString();
+    expect(sleepSecondsInRange([sleep(yesterday)], dayStart, dayEnd, lateNow)).toBe(24 * HOUR);
+  });
+
+  it('ignores every other event type, ended or not', () => {
+    const note: SummaryEvent = { type: 'NOTE', startedAt: local('10:00') };
+    const feed = breast('11:00', '11:30');
+    expect(sleepSecondsInRange([note, feed], dayStart, dayEnd, farFuture)).toBe(0);
+  });
+
+  it('measures a daylight-saving day against its real length', () => {
+    // Europe/Berlin: 2026-03-29 has 23 hours, 2026-10-25 has 25.
+    const short = localDayRange('2026-03-29', 'Europe/Berlin');
+    const long = localDayRange('2026-10-25', 'Europe/Berlin');
+    const allDay = (range: { start: Date; end: Date }) =>
+      sleep(
+        new Date(range.start.getTime() - HOUR * 1000).toISOString(),
+        new Date(range.end.getTime() + HOUR * 1000).toISOString(),
+      );
+
+    expect(sleepSecondsInRange([allDay(short)], short.start, short.end, farFuture)).toBe(23 * HOUR);
+    expect(sleepSecondsInRange([allDay(long)], long.start, long.end, farFuture)).toBe(25 * HOUR);
   });
 });
