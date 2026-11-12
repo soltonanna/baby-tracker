@@ -1,7 +1,17 @@
 import { Types } from 'mongoose';
-import type { Baby as BabyDto, CreateBabyInput, UpdateBabyInput } from '@baby-tracker/shared';
+import {
+  BABY_PHOTO_MAX_BYTES,
+  type Baby as BabyDto,
+  type BabyPhotoContentType,
+  type CreateBabyInput,
+  type UpdateBabyInput,
+} from '@baby-tracker/shared';
 import { Baby } from '../../models/Baby.js';
-import { notFound } from '../../lib/httpError.js';
+import { BabyEvent } from '../../models/BabyEvent.js';
+import { GrowthMeasurement } from '../../models/GrowthMeasurement.js';
+import { HttpError, notFound, unprocessable } from '../../lib/httpError.js';
+import { detectImageType } from '../../lib/imageType.js';
+import { inTransaction } from '../familyData/service.js';
 import type { FamilyScope } from '../../middleware/familyAccess.js';
 import { toBaby } from './mappers.js';
 
@@ -15,8 +25,13 @@ export async function createBaby(scope: FamilyScope, input: CreateBabyInput): Pr
   const baby = await Baby.create({
     familyId: scope.familyId,
     name: input.name,
+    ...(input.lastName ? { lastName: input.lastName } : {}),
     ...(input.birthDate ? { birthDate: input.birthDate } : {}),
+    ...(input.birthTime ? { birthTime: input.birthTime } : {}),
     ...(input.gender ? { gender: input.gender } : {}),
+    ...(input.birthWeightGrams === undefined ? {} : { birthWeightGrams: input.birthWeightGrams }),
+    ...(input.birthLengthMm === undefined ? {} : { birthLengthMm: input.birthLengthMm }),
+    ...(input.notes ? { notes: input.notes } : {}),
   });
 
   return toBaby(baby);
@@ -71,12 +86,124 @@ export async function updateBaby(
   }
 
   if (patch.name !== undefined) baby.name = patch.name;
-  for (const field of ['birthDate', 'gender', 'gestationalAge'] as const) {
+  for (const field of [
+    'lastName',
+    'birthDate',
+    'birthTime',
+    'gender',
+    'gestationalAge',
+    'birthWeightGrams',
+    'birthLengthMm',
+    'notes',
+  ] as const) {
     const value = patch[field];
     if (value === undefined) continue;
-    baby.set(field, value === null ? undefined : value);
+    // An empty string is "cleared" too: notes may be saved as '' by a form.
+    baby.set(field, value === null || value === '' ? undefined : value);
   }
 
   await baby.save();
   return toBaby(baby);
+}
+
+/**
+ * Deletes one baby and everything recorded about them — events and growth
+ * measurements, soft-deleted ones included — in one transaction, so a failure
+ * part-way leaves the baby whole rather than half-erased.
+ *
+ * Children first, babies last, the order the family reset uses. The baby is
+ * matched by `{ _id, familyId }` before anything is removed, so another
+ * family's baby is the same 404 as a missing one and nothing of theirs is
+ * touched. This is a hard delete on purpose, like the reset: the caller has
+ * confirmed it, and a soft-deleted baby would keep a child's data around that
+ * the parent asked to remove.
+ */
+export async function deleteBaby(scope: FamilyScope, babyId: string): Promise<void> {
+  if (!Types.ObjectId.isValid(babyId)) {
+    throw notFound('Baby not found');
+  }
+
+  await inTransaction(async (session) => {
+    const exists = await Baby.exists({ _id: babyId, familyId: scope.familyId }).session(session);
+    if (!exists) {
+      throw notFound('Baby not found');
+    }
+    await BabyEvent.deleteMany({ babyId, familyId: scope.familyId }, { session });
+    await GrowthMeasurement.deleteMany({ babyId, familyId: scope.familyId }, { session });
+    await Baby.deleteOne({ _id: babyId, familyId: scope.familyId }, { session });
+  });
+}
+
+export interface StoredPhoto {
+  data: Buffer;
+  contentType: BabyPhotoContentType;
+  updatedAt: Date;
+}
+
+/**
+ * Stores or replaces the baby's one profile photo. The bytes are checked
+ * against their own signature rather than the request's header, and the type
+ * that is stored is the one detected.
+ */
+export async function setBabyPhoto(
+  scope: FamilyScope,
+  babyId: string,
+  bytes: Buffer,
+): Promise<BabyDto> {
+  if (!Types.ObjectId.isValid(babyId)) {
+    throw notFound('Baby not found');
+  }
+  if (bytes.length === 0) {
+    throw unprocessable('The image is empty');
+  }
+  if (bytes.length > BABY_PHOTO_MAX_BYTES) {
+    throw new HttpError(413, 'PAYLOAD_TOO_LARGE', 'The image is too large');
+  }
+  const contentType = detectImageType(bytes);
+  if (contentType === null) {
+    throw unprocessable('The file is not a JPEG, PNG or WebP image');
+  }
+
+  const baby = await Baby.findOneAndUpdate(
+    { _id: babyId, familyId: scope.familyId },
+    { $set: { photo: { data: bytes, contentType }, photoUpdatedAt: new Date() } },
+    { returnDocument: 'after' },
+  );
+  if (!baby) {
+    throw notFound('Baby not found');
+  }
+  return toBaby(baby);
+}
+
+export async function removeBabyPhoto(scope: FamilyScope, babyId: string): Promise<BabyDto> {
+  if (!Types.ObjectId.isValid(babyId)) {
+    throw notFound('Baby not found');
+  }
+  const baby = await Baby.findOneAndUpdate(
+    { _id: babyId, familyId: scope.familyId },
+    { $unset: { photo: '', photoUpdatedAt: '' } },
+    { returnDocument: 'after' },
+  );
+  if (!baby) {
+    throw notFound('Baby not found');
+  }
+  return toBaby(baby);
+}
+
+/** The photo's bytes, or 404 for no photo / no such baby / another family's baby. */
+export async function getBabyPhoto(scope: FamilyScope, babyId: string): Promise<StoredPhoto> {
+  if (!Types.ObjectId.isValid(babyId)) {
+    throw notFound('Baby not found');
+  }
+  const baby = await Baby.findOne({ _id: babyId, familyId: scope.familyId }).select(
+    '+photo photoUpdatedAt',
+  );
+  if (!baby?.photo || !baby.photoUpdatedAt) {
+    throw notFound('Photo not found');
+  }
+  return {
+    data: Buffer.from(baby.photo.data),
+    contentType: baby.photo.contentType,
+    updatedAt: baby.photoUpdatedAt,
+  };
 }

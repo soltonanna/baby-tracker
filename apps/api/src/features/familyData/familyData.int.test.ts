@@ -394,3 +394,60 @@ describe('feeding kinds in the data file', () => {
     expect(await BabyEvent.countDocuments({ familyId: parent.familyId })).toBe(3);
   });
 });
+
+describe('child profiles in the data file', () => {
+  const JPEG_B64 = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]).toString('base64');
+
+  it('round-trips profile fields and the photo through export and import', async () => {
+    const parent = await withFamily();
+    const imported = await importData(
+      parent,
+      testFile({
+        babies: [
+          {
+            id: 'a',
+            name: 'Mia',
+            lastName: 'S',
+            birthTime: '07:45',
+            birthWeightGrams: 3400,
+            birthLengthMm: 510,
+            notes: 'Hello',
+            photo: { contentType: 'image/jpeg', data: JPEG_B64 },
+          },
+        ],
+        events: [],
+        measurements: [],
+      }),
+    );
+    expect(imported.status).toBe(200);
+
+    const exported = await exportData(parent);
+    expect(exported.body.babies[0]).toMatchObject({
+      lastName: 'S',
+      birthTime: '07:45',
+      birthWeightGrams: 3400,
+      birthLengthMm: 510,
+      notes: 'Hello',
+      photo: { contentType: 'image/jpeg', data: JPEG_B64 },
+    });
+  });
+
+  it('rejects a photo whose bytes are not the declared image type', async () => {
+    const parent = await withFamily();
+    const response = await importData(
+      parent,
+      testFile({
+        babies: [
+          {
+            id: 'a',
+            name: 'Mia',
+            photo: { contentType: 'image/png', data: JPEG_B64 },
+          },
+        ],
+        events: [],
+        measurements: [],
+      }),
+    );
+    expect(response.status).toBe(422);
+  });
+});

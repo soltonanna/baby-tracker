@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MEASUREMENT_FIELDS, createGrowthMeasurementSchema } from './growth.js';
 import { babyEventDataSchema, eventGroupIdSchema, eventRuleIssues } from './babyEvent.js';
+import { BABY_PHOTO_CONTENT_TYPES, BABY_PHOTO_MAX_BYTES } from '../constants.js';
 import { createBabySchema, gestationalAgeSchema } from './baby.js';
 
 /**
@@ -34,8 +35,23 @@ export const FAMILY_DATA_LIMITS = {
 const fileRefSchema = z.string().trim().min(1).max(64);
 const optionalInstant = z.coerce.date().optional();
 
+/**
+ * A profile photo inside the file: base64 of the stored bytes. Bounded to the
+ * same size as an upload; the importer also checks the bytes really are the
+ * declared image type, exactly as an upload does. Optional, so a v1 file from
+ * before profiles existed stays valid.
+ */
+export const familyDataPhotoSchema = z.object({
+  contentType: z.enum(BABY_PHOTO_CONTENT_TYPES),
+  data: z
+    .string()
+    .max(Math.ceil((BABY_PHOTO_MAX_BYTES * 4) / 3) + 4)
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/, 'Expected base64'),
+});
+
 export const familyDataBabySchema = createBabySchema.extend({
   id: fileRefSchema,
+  photo: familyDataPhotoSchema.optional(),
   gestationalAge: gestationalAgeSchema.optional(),
   createdAt: optionalInstant,
   updatedAt: optionalInstant,

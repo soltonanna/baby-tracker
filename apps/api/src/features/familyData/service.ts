@@ -1,6 +1,8 @@
 import mongoose, { Types, type ClientSession } from 'mongoose';
 import {
+  BABY_PHOTO_MAX_BYTES,
   FAMILY_DATA_FORMAT,
+  type BabyPhotoContentType,
   FAMILY_DATA_VERSION,
   type FamilyDataCounts,
   type FamilyDataExport,
@@ -10,6 +12,8 @@ import { Baby } from '../../models/Baby.js';
 import { BabyEvent } from '../../models/BabyEvent.js';
 import { GrowthMeasurement } from '../../models/GrowthMeasurement.js';
 import type { FamilyScope } from '../../middleware/familyAccess.js';
+import { unprocessable } from '../../lib/httpError.js';
+import { detectImageType } from '../../lib/imageType.js';
 import { toFeedingData } from '../events/mappers.js';
 
 /**
@@ -38,7 +42,7 @@ const toCalendarDate = (date: Date): string => date.toISOString().slice(0, 10);
 export async function exportFamilyData(family: FamilyScope): Promise<FamilyDataExport> {
   const familyId = family.familyId;
   const [babies, events, measurements] = await Promise.all([
-    Baby.find({ familyId }).sort({ createdAt: 1 }).lean(),
+    Baby.find({ familyId }).select('+photo').sort({ createdAt: 1 }).lean(),
     BabyEvent.find({ familyId }).sort({ startedAt: 1, createdAt: 1 }).lean(),
     GrowthMeasurement.find({ familyId, deletedAt: null })
       .sort({ measuredOn: 1, createdAt: 1 })
@@ -52,8 +56,21 @@ export async function exportFamilyData(family: FamilyScope): Promise<FamilyDataE
     babies: babies.map((baby) => ({
       id: baby._id.toString(),
       name: baby.name,
+      ...(baby.lastName ? { lastName: baby.lastName } : {}),
       ...(baby.birthDate ? { birthDate: baby.birthDate.toISOString() } : {}),
+      ...(baby.birthTime ? { birthTime: baby.birthTime } : {}),
       ...(baby.gender ? { gender: baby.gender } : {}),
+      ...(baby.birthWeightGrams === undefined ? {} : { birthWeightGrams: baby.birthWeightGrams }),
+      ...(baby.birthLengthMm === undefined ? {} : { birthLengthMm: baby.birthLengthMm }),
+      ...(baby.notes ? { notes: baby.notes } : {}),
+      ...(baby.photo
+        ? {
+            photo: {
+              contentType: baby.photo.contentType,
+              data: Buffer.from(baby.photo.data.buffer).toString('base64'),
+            },
+          }
+        : {}),
       ...(baby.gestationalAge?.weeks === undefined
         ? {}
         : {
@@ -111,7 +128,7 @@ async function deleteChildrenData(
   };
 }
 
-async function inTransaction<T>(work: (session: ClientSession) => Promise<T>): Promise<T> {
+export async function inTransaction<T>(work: (session: ClientSession) => Promise<T>): Promise<T> {
   const session = await mongoose.startSession();
   try {
     let result: T | undefined;
@@ -155,6 +172,27 @@ export async function clearFamilyData(family: FamilyScope): Promise<FamilyDataCo
  * tracker takes from `createdAt`. Rows without them get "now", with babies a
  * millisecond apart so the file's order is still the tracker's order.
  */
+/**
+ * The stored form of a file's photo. The base64 is decoded and the bytes are
+ * held to the same rules as an upload — within the size cap and really the
+ * declared image type — so a file cannot smuggle in what the upload refuses.
+ */
+function photoFields(
+  photo: FamilyDataInput['babies'][number]['photo'],
+  index: number,
+  fallback: Date,
+): { photo?: { data: Buffer; contentType: BabyPhotoContentType }; photoUpdatedAt?: Date } {
+  if (!photo) return {};
+  const data = Buffer.from(photo.data, 'base64');
+  const detected = detectImageType(data);
+  if (data.length === 0 || data.length > BABY_PHOTO_MAX_BYTES || detected !== photo.contentType) {
+    throw unprocessable('The photo in the file is not a valid image', {
+      path: `babies.${index}.photo`,
+    });
+  }
+  return { photo: { data, contentType: detected }, photoUpdatedAt: fallback };
+}
+
 export async function importFamilyData(
   family: FamilyScope,
   data: FamilyDataInput,
@@ -172,8 +210,14 @@ export async function importFamilyData(
       _id,
       familyId,
       name: baby.name,
+      ...(baby.lastName ? { lastName: baby.lastName } : {}),
       ...(baby.birthDate ? { birthDate: baby.birthDate } : {}),
+      ...(baby.birthTime ? { birthTime: baby.birthTime } : {}),
       ...(baby.gender ? { gender: baby.gender } : {}),
+      ...(baby.birthWeightGrams === undefined ? {} : { birthWeightGrams: baby.birthWeightGrams }),
+      ...(baby.birthLengthMm === undefined ? {} : { birthLengthMm: baby.birthLengthMm }),
+      ...(baby.notes ? { notes: baby.notes } : {}),
+      ...photoFields(baby.photo, index, createdAt),
       ...(baby.gestationalAge ? { gestationalAge: baby.gestationalAge } : {}),
       createdAt,
       updatedAt: baby.updatedAt ?? createdAt,

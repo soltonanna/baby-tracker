@@ -206,3 +206,32 @@ export async function apiFetch<TResponse>(
 
   return outcome.payload as TResponse;
 }
+
+/**
+ * Like `apiFetch`, for an endpoint that answers with a file rather than JSON —
+ * the profile photo. It goes through the same `send`, so the access token is
+ * attached and an expired one is refreshed and retried exactly once, which a
+ * plain `<img src>` could not do (it cannot send the Authorization header).
+ */
+export async function apiFetchBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const request: RequestInit = {
+    ...init,
+    headers: { Accept: 'image/*, application/json', ...(init.headers as Record<string, string>) },
+  };
+  let outcome = await send(path, request);
+
+  if (isExpiredAccessToken(outcome)) {
+    try {
+      await refreshAccessToken();
+    } catch {
+      throw toApiError(outcome);
+    }
+    outcome = await send(path, request);
+  }
+
+  if (!outcome.response.ok) {
+    throw toApiError(outcome);
+  }
+
+  return outcome.response.blob();
+}

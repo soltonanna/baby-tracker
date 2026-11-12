@@ -1927,46 +1927,13 @@ describe('adding a baby', () => {
     expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
   });
 
-  it('adds the second twin through the same form, from the tracker', async () => {
-    let babyList: Baby[] = [baby(ANI_ID, 'Ani')];
-
-    stubApi({
-      babies: () => Promise.resolve(json({ babies: babyList })),
-      createBaby: () => {
-        babyList = [baby(ANI_ID, 'Ani'), baby(NARE_ID, 'Nare')];
-        return Promise.resolve(json({ baby: baby(NARE_ID, 'Nare') }, 201));
-      },
-    });
-    renderToday();
-
-    // One baby so far, and the tracker offers the same form to add another.
-    expect(await screen.findByRole('tab', { name: 'Ani' })).toBeDefined();
-    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
-
-    const { name } = await babyFields();
-    await userEvent.type(name, 'Nare');
-    await userEvent.click(screen.getByRole('button', { name: 'Add baby' }));
-
-    // Two independent babies, one tab each — no twin flow and no twin payload.
-    const tabs = await screen.findAllByRole('tab');
-    expect(tabs.map(spokenText)).toEqual(['Ani', 'Nare']);
-    expect(createdBabyBodies()).toEqual([{ name: 'Nare' }]);
-    expect(screen.queryByLabelText('Name')).toBeNull();
-  });
-
-  it('leaves the tracker untouched when the form is cancelled', async () => {
+  it('offers no add-baby action in the tracker: more children are added in Settings', async () => {
     stubApi({});
     renderToday();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Add baby' }));
-
-    const { name } = await babyFields();
-    await userEvent.type(name, 'Never mind');
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-
-    expect(screen.queryByLabelText('Name')).toBeNull();
-    expect(createdBabyBodies()).toEqual([]);
+    expect(await screen.findByRole('tab', { name: 'Ani' })).toBeDefined();
     expect(await screen.findByRole('button', { name: 'Add feeding' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Add baby' })).toBeNull();
   });
 
   it('reports a failed creation and keeps what was entered', async () => {

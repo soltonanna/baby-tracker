@@ -10,9 +10,15 @@ import type { FAMILY_DATA_FORMAT, FAMILY_DATA_VERSION } from '../schemas/familyD
 export interface FamilyDataBaby {
   id: string;
   name: string;
+  lastName?: string;
   birthDate?: IsoDateTime;
+  birthTime?: string;
   gender?: BabyGender;
   gestationalAge?: GestationalAge;
+  birthWeightGrams?: number;
+  birthLengthMm?: number;
+  notes?: string;
+  photo?: { contentType: string; data: string };
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
 }

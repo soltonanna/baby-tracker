@@ -1,7 +1,13 @@
-import { Router } from 'express';
-import { createBabySchema, updateBabySchema } from '@baby-tracker/shared';
+import express, { Router } from 'express';
+import {
+  BABY_PHOTO_CONTENT_TYPES,
+  BABY_PHOTO_MAX_BYTES,
+  createBabySchema,
+  updateBabySchema,
+} from '@baby-tracker/shared';
 import { validate } from '../../middleware/validate.js';
 import { requireBabyInFamily } from '../../middleware/babyAccess.js';
+import { requireFamilyRole } from '../../middleware/familyAccess.js';
 import { babyEventRouter } from '../events/routes.js';
 import { growthRouter } from '../growth/routes.js';
 import * as controller from './controller.js';
@@ -21,6 +27,22 @@ babyRouter.post('/', validate({ body: createBabySchema }), controller.create);
 babyRouter.get('/', controller.list);
 babyRouter.get('/:babyId', controller.getOne);
 babyRouter.patch('/:babyId', validate({ body: updateBabySchema }), controller.update);
+
+// Removing a child erases their events and growth records with them, so — like
+// the family-wide reset — it is the owner's alone.
+babyRouter.delete('/:babyId', requireFamilyRole('OWNER'), controller.remove);
+
+// The profile photo. The baby is resolved first, so the body is only read for
+// a baby the caller may edit; the raw parser accepts the three image types and
+// stops at the size cap, and the service re-checks the bytes themselves.
+babyRouter.put(
+  '/:babyId/photo',
+  requireBabyInFamily,
+  express.raw({ type: [...BABY_PHOTO_CONTENT_TYPES], limit: BABY_PHOTO_MAX_BYTES }),
+  controller.putPhoto,
+);
+babyRouter.get('/:babyId/photo', controller.getPhoto);
+babyRouter.delete('/:babyId/photo', controller.deletePhoto);
 
 // Tracker events live inside a baby, in the URL and in the code. The baby is
 // resolved once here, so nothing under /events can be reached for a baby that

@@ -123,3 +123,12 @@ export interface UnitPreferences {
 export const DEFAULT_UNITS: UnitPreferences = { weight: 'kg', length: 'cm', volume: 'ml' };
 export const DEFAULT_LOCALE: Locale = 'en';
 export const DEFAULT_TIME_ZONE = 'Asia/Yerevan';
+
+/**
+ * Profile photo limits. One photo per baby, stored with the baby. The web app
+ * downsizes to a small JPEG before uploading, so the cap is generous headroom
+ * rather than the expected size.
+ */
+export const BABY_PHOTO_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export type BabyPhotoContentType = (typeof BABY_PHOTO_CONTENT_TYPES)[number];
+export const BABY_PHOTO_MAX_BYTES = 512 * 1024;

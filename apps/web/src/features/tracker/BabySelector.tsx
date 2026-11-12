@@ -1,11 +1,42 @@
 import { useTranslation } from 'react-i18next';
 import type { Baby } from '@baby-tracker/shared';
+import { useBabyPhotoUrl } from '../settings/useBabyPhotoUrl.js';
 import { babyTones } from './babyTone.js';
 
 export interface BabySelectorProps {
   babies: Baby[];
   selectedBabyId: string;
   onSelect: (babyId: string) => void;
+  /** Needed to show a baby's photo; without it the circle shows the initial. */
+  familyId?: string | undefined;
+}
+
+/** The round mark beside the name: the baby's photo if they have one, else their initial. */
+function BabyCircle({
+  baby,
+  familyId,
+  selected,
+}: {
+  baby: Baby;
+  familyId: string | undefined;
+  selected: boolean;
+}) {
+  const photoUrl = useBabyPhotoUrl(familyId, baby);
+  return (
+    <span
+      aria-hidden="true"
+      className={[
+        'flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-base font-bold',
+        selected ? 'bg-on-tone text-tone' : 'bg-tone text-on-tone',
+      ].join(' ')}
+    >
+      {photoUrl === null ? (
+        baby.name.trim().charAt(0).toUpperCase()
+      ) : (
+        <img src={photoUrl} alt="" className="h-full w-full object-cover" />
+      )}
+    </span>
+  );
 }
 
 /**
@@ -17,7 +48,7 @@ export interface BabySelectorProps {
  * obvious at a glance. The name and the initial are always there too, so the
  * colour is never the only signal.
  */
-export function BabySelector({ babies, selectedBabyId, onSelect }: BabySelectorProps) {
+export function BabySelector({ babies, selectedBabyId, onSelect, familyId }: BabySelectorProps) {
   const { t } = useTranslation();
   const tones = babyTones(babies);
 
@@ -44,15 +75,7 @@ export function BabySelector({ babies, selectedBabyId, onSelect }: BabySelectorP
                 : 'border-tone-line bg-tone-soft text-tone-ink',
             ].join(' ')}
           >
-            <span
-              aria-hidden="true"
-              className={[
-                'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-base font-bold',
-                selected ? 'bg-on-tone text-tone' : 'bg-tone text-on-tone',
-              ].join(' ')}
-            >
-              {baby.name.trim().charAt(0).toUpperCase()}
-            </span>
+            <BabyCircle baby={baby} familyId={familyId} selected={selected} />
             <span className="min-w-0 truncate">{baby.name}</span>
           </button>
         );

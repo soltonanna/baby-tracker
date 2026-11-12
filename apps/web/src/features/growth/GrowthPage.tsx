@@ -71,6 +71,7 @@ export function GrowthPage() {
   return (
     <div className="space-y-4" data-tone={babyTones(babies).get(baby.id)}>
       <BabySelector
+        familyId={familyId}
         babies={babies}
         selectedBabyId={baby.id}
         onSelect={(babyId) => {

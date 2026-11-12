@@ -8,6 +8,7 @@ import { TodayPage } from '../features/tracker/TodayPage.js';
 import { TimelinePage } from '../features/timeline/TimelinePage.js';
 import { NotFoundPage } from '../features/system/NotFoundPage.js';
 import { DataPage } from '../features/data/DataPage.js';
+import { SettingsPage } from '../features/settings/SettingsPage.js';
 
 /**
  * Two branches under pathless layout routes.
@@ -47,6 +48,9 @@ const routes: RouteObject[] = [
           // More holds the data tools for now: export, import, reset. Settings
           // and caregivers join it in Phase 6.
           { path: 'more', Component: DataPage },
+          // Settings: the children's profiles. Reached from the gear in the
+          // header rather than the bottom navigation.
+          { path: 'settings', Component: SettingsPage },
           { path: '*', Component: NotFoundPage },
         ],
       },

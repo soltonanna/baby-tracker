@@ -55,10 +55,10 @@ import { FeedingSummary } from './FeedingSummary.js';
  * an event, but each is another form that must not be open beside one. The four
  * event forms, and which of them edits which event, are `EventEditor`'s.
  */
-type OpenForm = { kind: 'baby' } | { kind: 'growth' } | EventFormState;
+type OpenForm = { kind: 'growth' } | EventFormState;
 
 const isEventForm = (form: OpenForm | null): form is EventFormState =>
-  form !== null && form.kind !== 'baby' && form.kind !== 'growth';
+  form !== null && form.kind !== 'growth';
 
 /**
  * Enough of the previous day to be sure of holding its last feeding: the list
@@ -167,6 +167,7 @@ export function TodayPage() {
   return (
     <div className="space-y-4" data-tone={selectedTone}>
       <BabySelector
+        familyId={familyId}
         babies={babies}
         selectedBabyId={selectedBabyId ?? ''}
         onSelect={(babyId) => {
@@ -178,22 +179,7 @@ export function TodayPage() {
         }}
       />
 
-      {openForm?.kind === 'baby' ? (
-        // The same form as the empty state, reached from the tracker: this is
-        // how the second twin is added, with no separate twin flow.
-        // Not tinted with the selected baby's colour: the new baby is not them.
-        <div data-tone="family">
-          <AddBabyForm
-            familyId={familyId}
-            onCreated={() => {
-              setOpenForm(null);
-            }}
-            onCancel={() => {
-              setOpenForm(null);
-            }}
-          />
-        </div>
-      ) : openForm?.kind === 'growth' && selectedBaby !== undefined ? (
+      {openForm?.kind === 'growth' && selectedBaby !== undefined ? (
         // A shortcut into Health → Growth's own form: measurements are
         // periodic, so they live there, but the scale is often at hand here.
         <GrowthForm
@@ -297,21 +283,6 @@ export function TodayPage() {
               </Link>
             </p>
           ) : null}
-
-          {/*
-            Adding a baby happens twice in the life of a family and a feeding
-            happens eight times a day, so it is quiet and below the four daily
-            actions rather than a fifth cell competing with them.
-          */}
-          <Button
-            fullWidth
-            variant="quiet"
-            onClick={() => {
-              setOpenForm({ kind: 'baby' });
-            }}
-          >
-            {t('today.addBaby')}
-          </Button>
         </div>
       )}
 

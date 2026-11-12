@@ -15,10 +15,26 @@ export interface Baby {
   id: Id;
   /** The family the baby belongs to — and the boundary that guards it. */
   familyId: Id;
+  /** The first name — required, and the only required field of the profile. */
   name: string;
+  lastName?: string;
   birthDate?: IsoDateTime;
+  /** Local time of birth, 'HH:mm'. */
+  birthTime?: string;
   gender?: BabyGender;
   gestationalAge?: GestationalAge;
+  /** Canonical grams (D3); shown in the parent's unit. */
+  birthWeightGrams?: number;
+  /** Canonical millimetres (D3). */
+  birthLengthMm?: number;
+  notes?: string;
+  /**
+   * Whether a profile photo is stored. The image itself is never part of this
+   * object; it is fetched from the photo endpoint. `photoUpdatedAt` changes on
+   * every replace, so it doubles as the cache-busting version of the image.
+   */
+  hasPhoto?: boolean;
+  photoUpdatedAt?: IsoDateTime;
   createdAt: IsoDateTime;
   updatedAt: IsoDateTime;
 }

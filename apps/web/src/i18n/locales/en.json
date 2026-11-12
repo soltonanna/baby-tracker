@@ -63,7 +63,6 @@
     "addSleep": "Add sleep",
     "addDiaper": "Add nappy",
     "addNote": "Add note",
-    "addBaby": "Add baby",
     "todayEvents": "Today",
     "loadingEvents": "Loading events…",
     "eventsFailed": "Could not load events. Please try again.",
@@ -297,7 +296,9 @@
       "system": "System",
       "light": "Light",
       "dark": "Dark"
-    }
+    },
+    "open": "Settings",
+    "title": "Settings"
   },
   "growth": {
     "title": "Growth",
@@ -455,6 +456,60 @@
       "exportFailed": "The export failed. Check your connection and try again.",
       "importFailed": "The import failed and nothing was changed. Try again.",
       "clearFailed": "Clearing failed and nothing was deleted. Try again."
+    }
+  },
+  "childProfile": {
+    "title": "Children",
+    "intro": "Add, edit or remove the children in your family.",
+    "empty": "No children yet.",
+    "add": "Add a child",
+    "noFamily": "Create your family on the Today screen first.",
+    "loadFailed": "Could not load your children. Please try again.",
+    "list": {
+      "edit": "Edit",
+      "delete": "Delete",
+      "editLabel": "Edit {{name}}",
+      "deleteLabel": "Delete {{name}}",
+      "born": "Born {{date}}",
+      "bornAt": "Born {{date}} at {{time}}",
+      "weight": "Birth weight",
+      "length": "Birth length"
+    },
+    "form": {
+      "addTitle": "Add a child",
+      "editTitle": "Edit {{name}}",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "birthTime": "Time of birth",
+      "birthWeight": "Birth weight ({{unit}})",
+      "birthLength": "Birth length ({{unit}})",
+      "equals": "= {{value}}",
+      "notes": "Notes",
+      "optional": "(optional)",
+      "photo": "Profile photo",
+      "photoInput": "Choose a profile photo",
+      "photoChoose": "Choose photo",
+      "photoReplace": "Replace photo",
+      "photoRemove": "Remove photo",
+      "photoProcessing": "Preparing…",
+      "photoHint": "The photo is shrunk on your device before it is saved. Each child has one photo, and you can replace it whenever you like."
+    },
+    "errors": {
+      "time": "Enter a valid time.",
+      "weight": "Enter a birth weight between {{min}} and {{max}} {{unit}}.",
+      "length": "Enter a birth length between {{min}} and {{max}} {{unit}}.",
+      "notes": "Notes can be up to {{max}} characters.",
+      "photoType": "Choose a JPEG, PNG or WebP image.",
+      "photoUnreadable": "That image could not be read. Try another one.",
+      "photoFailed": "The details were saved, but the photo was not. Edit the child to try the photo again.",
+      "saveFailed": "Could not save. Please try again."
+    },
+    "delete": {
+      "title": "Delete {{name}}?",
+      "body": "This permanently deletes {{name}} and every feeding, sleep, diaper, note and growth measurement recorded for them. It cannot be undone. Export your data first if you want a backup.",
+      "confirm": "Delete {{name}}",
+      "deleting": "Deleting…",
+      "failed": "Could not delete. Please try again."
     }
   }
 }

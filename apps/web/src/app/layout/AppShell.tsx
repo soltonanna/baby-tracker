@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { Link, Outlet, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
+import { GearIcon } from '../../components/ui/icons.js';
 import { BabyBadge } from '../../components/ui/BabyBadge.js';
 import { Button } from '../../components/ui/Button.js';
 import { useAuth } from '../../features/auth/AuthContext.js';
@@ -33,7 +34,20 @@ export function AppShell() {
             <BabyBadge size="sm" />
             <h1 className="truncate text-xl font-semibold text-ink">{t('app.name')}</h1>
           </div>
-          <PreferenceSwitchers className="shrink-0" />
+          <div className="flex shrink-0 items-center gap-2">
+            <PreferenceSwitchers />
+            <Link
+              to="/settings"
+              aria-label={t('settings.open')}
+              className={[
+                'inline-flex min-h-touch min-w-touch items-center justify-center rounded-full',
+                'border border-line bg-surface text-ink',
+                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tone',
+              ].join(' ')}
+            >
+              <GearIcon className="h-5 w-5" />
+            </Link>
+          </div>
         </div>
 
         <div className="flex items-center justify-between gap-3">
