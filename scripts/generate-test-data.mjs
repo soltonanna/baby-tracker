@@ -106,7 +106,7 @@ const PRETERM_BY_DAYS = who.TERM_GESTATION_DAYS - who.gestationalAgeInDays(GESTA
 const BABIES = [
   {
     id: 'boy',
-    name: 'Aram',
+    name: 'Aren',
     gender: 'MALE',
     // z-scores against WHO at corrected age: start → end of the period (catch-up).
     z: { weight: [-0.4, 0.05], length: [-0.5, -0.1], headCircumference: [-0.3, 0.1] },
@@ -115,7 +115,7 @@ const BABIES = [
   },
   {
     id: 'girl',
-    name: 'Ani',
+    name: 'Ameli',
     gender: 'FEMALE',
     z: { weight: [-0.75, -0.35], length: [-0.8, -0.45], headCircumference: [-0.6, -0.3] },
     nightFeedsUntilDay: 165,
