@@ -35,14 +35,15 @@ const routes: RouteObject[] = [
         children: [
           { index: true, Component: TodayPage },
           { path: 'timeline', Component: TimelinePage },
-          // Growth is the first Health section; medical history, vaccinations
-          // and appointments join it later.
-          // Lazy: the screen carries the WHO tables, which the daily tracker
-          // never needs, so they load only when Health is opened.
+          // Health: growth, the medical history and the vaccination schedule,
+          // as three tabs of one page.
+          // Lazy: the page carries the WHO tables and the immunization
+          // catalog, which the daily tracker never needs, so they load only
+          // when Health is opened.
           {
             path: 'health',
             lazy: async () => ({
-              Component: (await import('../features/growth/GrowthPage.js')).GrowthPage,
+              Component: (await import('../features/health/HealthPage.js')).HealthPage,
             }),
           },
           // More holds the data tools for now: export, import, reset. Settings

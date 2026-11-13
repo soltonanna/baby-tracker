@@ -6,6 +6,7 @@ import { BabyEvent } from '../../models/BabyEvent.js';
 import { Family } from '../../models/Family.js';
 import { FamilyMember } from '../../models/FamilyMember.js';
 import { GrowthMeasurement } from '../../models/GrowthMeasurement.js';
+import { HealthRecord } from '../../models/HealthRecord.js';
 import { User } from '../../models/User.js';
 import { resetAuthRateLimits } from '../../middleware/rateLimit.js';
 
@@ -75,6 +76,20 @@ async function withTwinsAndData(parent: Parent): Promise<{ boyId: string; girlId
     .set('Authorization', parent.bearer)
     .send({ measuredOn: '2026-05-01', weightGrams: 3400 })
     .expect(201);
+  await request(app)
+    .post(`${babies}/${girlId}/health`)
+    .set('Authorization', parent.bearer)
+    .send({
+      category: 'vaccination',
+      occurredAt: '2026-04-02T07:00:00.000Z',
+      name: 'BCG',
+      doseValue: 0.05,
+      doseUnit: 'ml',
+      nextDueOn: '2026-05-13',
+      scheduleKey: 'bcg-1',
+      catalogVersion: '2026.1',
+    })
+    .expect(201);
 
   return { boyId, girlId };
 }
@@ -111,6 +126,17 @@ const testFile = (overrides: Record<string, unknown> = {}) => ({
     { babyId: 'girl', type: 'DIAPER', startedAt: '2026-04-02T21:00:00.000Z', details: 'wet' },
   ],
   measurements: [{ babyId: 'girl', measuredOn: '2026-04-15', weightGrams: 2900, lengthMm: 470 }],
+  healthRecords: [
+    {
+      babyId: 'boy',
+      category: 'vaccination',
+      occurredAt: '2026-04-01T07:00:00.000Z',
+      name: 'Hepatitis B, birth dose',
+      scheduleKey: 'hepb-birth',
+      catalogVersion: '2026.1',
+      createdAt: '2026-04-01T08:00:00.000Z',
+    },
+  ],
   ...overrides,
 });
 
@@ -135,6 +161,21 @@ describe('GET .../data/export', () => {
     expect(response.body.measurements).toEqual([
       expect.objectContaining({ babyId: girlId, measuredOn: '2026-05-01', weightGrams: 3400 }),
     ]);
+    expect(response.body.healthRecords).toEqual([
+      expect.objectContaining({
+        babyId: girlId,
+        category: 'vaccination',
+        name: 'BCG',
+        doseValue: 0.05,
+        doseUnit: 'ml',
+        nextDueOn: '2026-05-13',
+        scheduleKey: 'bcg-1',
+        catalogVersion: '2026.1',
+      }),
+    ]);
+    // The reference the records were made against travels with them.
+    expect(response.body.immunizationReference).toMatchObject({ catalogVersion: '2026.1' });
+    expect(response.body.immunizationReference.schedule.length).toBeGreaterThan(10);
     // Nothing from the account side leaks into the file.
     expect(JSON.stringify(response.body)).not.toContain(parent.userId);
   });
@@ -147,6 +188,16 @@ describe('GET .../data/export', () => {
     const response = await exportData(parent);
 
     expect(response.body.measurements).toEqual([]);
+  });
+
+  it('leaves soft-deleted health records out', async () => {
+    const parent = await withFamily();
+    await withTwinsAndData(parent);
+    await HealthRecord.updateMany({}, { $set: { deletedAt: new Date() } });
+
+    const response = await exportData(parent);
+
+    expect(response.body.healthRecords).toEqual([]);
   });
 
   it('answers 404 for a family the caller does not belong to', async () => {
@@ -173,11 +224,20 @@ describe('POST .../data/import', () => {
     const response = await importData(parent, testFile());
 
     expect(response.status).toBe(200);
-    expect(response.body.imported).toEqual({ babies: 2, events: 2, measurements: 1 });
+    expect(response.body.imported).toEqual({
+      babies: 2,
+      events: 2,
+      measurements: 1,
+      healthRecords: 1,
+    });
 
     const babies = await Baby.find({ familyId: parent.familyId }).sort({ createdAt: 1 });
     expect(babies.map((b) => b.name)).toEqual(['Test Boy', 'Test Girl']);
     expect(await BabyEvent.countDocuments({ familyId: parent.familyId })).toBe(2);
+    const record = await HealthRecord.findOne({ familyId: parent.familyId });
+    expect(record?.babyId.toString()).toBe(babies[0]?._id.toString());
+    expect(record?.scheduleKey).toBe('hepb-birth');
+    expect(record?.createdAt.toISOString()).toBe('2026-04-01T08:00:00.000Z');
     const measurement = await GrowthMeasurement.findOne({ familyId: parent.familyId });
     expect(measurement?.babyId.toString()).toBe(babies[1]?._id.toString());
     expect(measurement?.createdBy.toString()).toBe(parent.userId);
@@ -207,6 +267,7 @@ describe('POST .../data/import', () => {
     const strip = (file: typeof exported) => ({
       events: file.events.map(({ babyId: _b, ...rest }: { babyId: string }) => rest),
       measurements: file.measurements.map(({ babyId: _b, ...rest }: { babyId: string }) => rest),
+      healthRecords: file.healthRecords.map(({ babyId: _b, ...rest }: { babyId: string }) => rest),
       babies: file.babies.map(({ id: _i, ...rest }: { id: string }) => rest),
     });
     expect(strip(again)).toEqual(strip(exported));
@@ -263,6 +324,7 @@ describe('POST .../data/import', () => {
         ],
         events: [],
         measurements: [],
+        healthRecords: [],
       },
     ],
   ])('rejects %s with 422', async (_label, overrides) => {
@@ -305,10 +367,16 @@ describe('DELETE .../data', () => {
     const response = await clearData(parent);
 
     expect(response.status).toBe(200);
-    expect(response.body.deleted).toEqual({ babies: 2, events: 3, measurements: 1 });
+    expect(response.body.deleted).toEqual({
+      babies: 2,
+      events: 3,
+      measurements: 1,
+      healthRecords: 1,
+    });
     expect(await Baby.countDocuments({ familyId: parent.familyId })).toBe(0);
     expect(await BabyEvent.countDocuments({ familyId: parent.familyId })).toBe(0);
     expect(await GrowthMeasurement.countDocuments({ familyId: parent.familyId })).toBe(0);
+    expect(await HealthRecord.countDocuments({ familyId: parent.familyId })).toBe(0);
     expect(await Family.countDocuments({ _id: parent.familyId })).toBe(1);
     expect(await FamilyMember.countDocuments({ familyId: parent.familyId })).toBe(1);
 
@@ -417,6 +485,7 @@ describe('child profiles in the data file', () => {
         ],
         events: [],
         measurements: [],
+        healthRecords: [],
       }),
     );
     expect(imported.status).toBe(200);
@@ -446,8 +515,87 @@ describe('child profiles in the data file', () => {
         ],
         events: [],
         measurements: [],
+        healthRecords: [],
       }),
     );
     expect(response.status).toBe(422);
+  });
+});
+
+describe('health records in the data file', () => {
+  it('imports a file from before health records existed, leaving none', async () => {
+    const parent = await withFamily();
+    await withTwinsAndData(parent);
+    const { healthRecords: _dropped, ...oldFile } = testFile();
+
+    const response = await importData(parent, oldFile);
+
+    expect(response.status).toBe(200);
+    expect(response.body.imported.healthRecords).toBe(0);
+    expect(await HealthRecord.countDocuments({ familyId: parent.familyId })).toBe(0);
+  });
+
+  it('keeps a schedule key and catalog version from another catalog edition, untouched', async () => {
+    const parent = await withFamily();
+    const file = testFile({
+      healthRecords: [
+        {
+          babyId: 'girl',
+          category: 'vaccination',
+          occurredAt: '2026-04-05T07:00:00.000Z',
+          name: 'Dose from a retired schedule',
+          scheduleKey: 'retired-dose-9',
+          catalogVersion: '1999.9',
+        },
+      ],
+    });
+
+    await importData(parent, file).expect(200);
+
+    const stored = await HealthRecord.findOne({ familyId: parent.familyId });
+    expect(stored).toMatchObject({
+      name: 'Dose from a retired schedule',
+      scheduleKey: 'retired-dose-9',
+      catalogVersion: '1999.9',
+    });
+    // Exporting again states the record exactly as it was made.
+    const exported = (await exportData(parent)).body;
+    expect(exported.healthRecords[0]).toMatchObject({
+      scheduleKey: 'retired-dose-9',
+      catalogVersion: '1999.9',
+    });
+  });
+
+  it('rejects an unknown baby, a lone dose value and a link on a non-vaccination, changing nothing', async () => {
+    const parent = await withFamily();
+    await withTwinsAndData(parent);
+    const record = {
+      babyId: 'boy',
+      category: 'vaccination',
+      occurredAt: '2026-04-05T07:00:00.000Z',
+      name: 'X',
+    };
+    for (const bad of [
+      { ...record, babyId: 'nobody' },
+      { ...record, doseValue: 5 },
+      { ...record, category: 'checkup', scheduleKey: 'hexa-1' },
+    ]) {
+      const response = await importData(parent, testFile({ healthRecords: [bad] }));
+      expect(response.status).toBe(422);
+    }
+    // The twins and their data are still there.
+    expect(await Baby.countDocuments({ familyId: parent.familyId })).toBe(2);
+    expect(await HealthRecord.countDocuments({ familyId: parent.familyId })).toBe(1);
+  });
+
+  it('never gives one family’s records to another on import', async () => {
+    const first = await withFamily();
+    const second = await withFamily();
+    await withTwinsAndData(first);
+
+    await importData(second, testFile()).expect(200);
+
+    expect(await HealthRecord.countDocuments({ familyId: first.familyId })).toBe(1);
+    expect(await HealthRecord.countDocuments({ familyId: second.familyId })).toBe(1);
   });
 });

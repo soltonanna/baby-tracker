@@ -30,14 +30,24 @@ import { MeasurementList } from './MeasurementList.js';
 
 type OpenForm = { kind: 'measurement'; measurement?: GrowthMeasurement } | { kind: 'baby' };
 
-export function GrowthPage() {
+export interface GrowthPageProps {
+  /** Lets the Health page keep the chosen baby across its tabs; standalone use needs neither. */
+  requestedBabyId?: string | null;
+  onBabyChange?: (babyId: string) => void;
+}
+
+export function GrowthPage({
+  requestedBabyId: controlledBabyId,
+  onBabyChange,
+}: GrowthPageProps = {}) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const units = user?.units ?? DEFAULT_UNITS;
   const today = currentLocalDate(trackerTimeZone(user?.timezone));
 
   const { familyId, babies, isError, isPending } = useFamilyBabies();
-  const [requestedBabyId, setRequestedBabyId] = useState<string | null>(null);
+  const [ownBabyId, setOwnBabyId] = useState<string | null>(null);
+  const requestedBabyId = controlledBabyId === undefined ? ownBabyId : controlledBabyId;
   const [openForm, setOpenForm] = useState<OpenForm | null>(null);
 
   const baby = babies?.find((candidate) => candidate.id === requestedBabyId) ?? babies?.[0];
@@ -75,7 +85,8 @@ export function GrowthPage() {
         babies={babies}
         selectedBabyId={baby.id}
         onSelect={(babyId) => {
-          setRequestedBabyId(babyId);
+          setOwnBabyId(babyId);
+          onBabyChange?.(babyId);
           setOpenForm(null);
         }}
       />

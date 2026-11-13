@@ -9,6 +9,7 @@ import {
 import { Baby } from '../../models/Baby.js';
 import { BabyEvent } from '../../models/BabyEvent.js';
 import { GrowthMeasurement } from '../../models/GrowthMeasurement.js';
+import { HealthRecord } from '../../models/HealthRecord.js';
 import { HttpError, notFound, unprocessable } from '../../lib/httpError.js';
 import { detectImageType } from '../../lib/imageType.js';
 import { inTransaction } from '../familyData/service.js';
@@ -130,6 +131,7 @@ export async function deleteBaby(scope: FamilyScope, babyId: string): Promise<vo
     }
     await BabyEvent.deleteMany({ babyId, familyId: scope.familyId }, { session });
     await GrowthMeasurement.deleteMany({ babyId, familyId: scope.familyId }, { session });
+    await HealthRecord.deleteMany({ babyId, familyId: scope.familyId }, { session });
     await Baby.deleteOne({ _id: babyId, familyId: scope.familyId }, { session });
   });
 }

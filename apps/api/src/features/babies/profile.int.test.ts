@@ -6,6 +6,7 @@ import { Baby } from '../../models/Baby.js';
 import { BabyEvent } from '../../models/BabyEvent.js';
 import { FamilyMember } from '../../models/FamilyMember.js';
 import { GrowthMeasurement } from '../../models/GrowthMeasurement.js';
+import { HealthRecord } from '../../models/HealthRecord.js';
 import { resetAuthRateLimits } from '../../middleware/rateLimit.js';
 
 /**
@@ -185,6 +186,15 @@ describe('DELETE /families/:familyId/babies/:babyId', () => {
         // Soft-deleted rows must go too.
         deletedAt: babyId === doomed ? new Date() : null,
       });
+      await HealthRecord.create({
+        familyId: parent.familyId,
+        babyId,
+        category: 'checkup',
+        occurredAt: new Date('2026-10-01T09:00:00.000Z'),
+        name: 'Checkup',
+        createdBy: parent.userId,
+        deletedAt: babyId === doomed ? new Date() : null,
+      });
     }
 
     const response = await request(app)
@@ -195,9 +205,11 @@ describe('DELETE /families/:familyId/babies/:babyId', () => {
     expect(await Baby.countDocuments({ _id: doomed })).toBe(0);
     expect(await BabyEvent.countDocuments({ babyId: doomed })).toBe(0);
     expect(await GrowthMeasurement.countDocuments({ babyId: doomed })).toBe(0);
+    expect(await HealthRecord.countDocuments({ babyId: doomed })).toBe(0);
     expect(await Baby.countDocuments({ _id: kept })).toBe(1);
     expect(await BabyEvent.countDocuments({ babyId: kept })).toBe(1);
     expect(await GrowthMeasurement.countDocuments({ babyId: kept })).toBe(1);
+    expect(await HealthRecord.countDocuments({ babyId: kept })).toBe(1);
   });
 
   it('answers 404 for another family’s baby and a malformed id, deleting nothing', async () => {

@@ -32,6 +32,14 @@ const exported: FamilyDataExport = {
   ],
   events: [],
   measurements: [],
+  healthRecords: [],
+  immunizationReference: {
+    catalogVersion: '2026.1',
+    reviewedOn: '2026-11-13',
+    sources: [],
+    vaccines: [],
+    schedule: [],
+  },
 };
 
 const json = (body: unknown, status = 200): Response =>
@@ -48,9 +56,13 @@ function stubApi(role: FamilyWithRole['role'] = 'OWNER'): void {
     const method = init?.method ?? 'GET';
     if (url.endsWith('/data/export')) return Promise.resolve(json(exported));
     if (url.endsWith('/data/import') && method === 'POST')
-      return Promise.resolve(json({ imported: { babies: 2, events: 5, measurements: 1 } }));
+      return Promise.resolve(
+        json({ imported: { babies: 2, events: 5, measurements: 1, healthRecords: 4 } }),
+      );
     if (url.endsWith('/data') && method === 'DELETE')
-      return Promise.resolve(json({ deleted: { babies: 2, events: 9, measurements: 3 } }));
+      return Promise.resolve(
+        json({ deleted: { babies: 2, events: 9, measurements: 3, healthRecords: 2 } }),
+      );
     if (url.endsWith('/families')) return Promise.resolve(json({ families: [family(role)] }));
     throw new Error(`Unexpected request in test: ${method} ${url}`);
   });
@@ -99,7 +111,7 @@ describe('DataPage', () => {
 
     expect(await screen.findByRole('status')).toHaveProperty(
       'textContent',
-      'Downloaded: Babies: 1 · Events: 0 · Measurements: 0.',
+      'Downloaded: Babies: 1 · Events: 0 · Measurements: 0 · Health records: 0.',
     );
     expect(click).toHaveBeenCalledOnce();
     click.mockRestore();
@@ -126,13 +138,17 @@ describe('DataPage', () => {
       await screen.findByLabelText('Choose a file…'),
       file(JSON.stringify(exported)),
     );
-    expect(await screen.findByText('Babies: 1 · Events: 0 · Measurements: 0')).toBeDefined();
+    expect(
+      await screen.findByText('Babies: 1 · Events: 0 · Measurements: 0 · Health records: 0'),
+    ).toBeDefined();
     expect(calls('POST', /\/data\/import$/)).toHaveLength(0);
 
     await userEvent.click(screen.getByRole('button', { name: 'Replace data' }));
 
     expect(
-      await screen.findByText('Imported: Babies: 2 · Events: 5 · Measurements: 1.'),
+      await screen.findByText(
+        'Imported: Babies: 2 · Events: 5 · Measurements: 1 · Health records: 4.',
+      ),
     ).toBeDefined();
     const [call] = calls('POST', /\/data\/import$/);
     expect(JSON.parse(String((call?.[1] as RequestInit).body))).toEqual(exported);
@@ -152,7 +168,9 @@ describe('DataPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Delete everything' }));
 
     expect(
-      await screen.findByText('Deleted: Babies: 2 · Events: 9 · Measurements: 3.'),
+      await screen.findByText(
+        'Deleted: Babies: 2 · Events: 9 · Measurements: 3 · Health records: 2.',
+      ),
     ).toBeDefined();
     expect(calls('DELETE', /\/data$/)).toHaveLength(1);
   });

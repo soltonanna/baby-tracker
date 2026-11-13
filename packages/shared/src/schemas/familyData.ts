@@ -3,12 +3,13 @@ import { MEASUREMENT_FIELDS, createGrowthMeasurementSchema } from './growth.js';
 import { babyEventDataSchema, eventGroupIdSchema, eventRuleIssues } from './babyEvent.js';
 import { BABY_PHOTO_CONTENT_TYPES, BABY_PHOTO_MAX_BYTES } from '../constants.js';
 import { createBabySchema, gestationalAgeSchema } from './baby.js';
+import { healthRecordDataSchema, healthRecordRuleIssues } from './health.js';
 
 /**
  * The family data file: everything recorded about the children, in one JSON
  * document that can be exported, kept somewhere safe and imported again.
  *
- * **What is in it.** Babies, tracker events and live growth measurements. Not
+ * **What is in it.** Babies, tracker events, live growth measurements and live health records. Not
  * the user, the family, memberships or sessions — those are the account, and a
  * data file must never be able to change who can sign in or who belongs to a
  * family.
@@ -30,6 +31,7 @@ export const FAMILY_DATA_LIMITS = {
   babies: 10,
   events: 200_000,
   measurements: 5_000,
+  healthRecords: 5_000,
 } as const;
 
 const fileRefSchema = z.string().trim().min(1).max(64);
@@ -92,6 +94,23 @@ export const familyDataMeasurementSchema = z
     path: ['weightGrams'],
   });
 
+/**
+ * Same value rules as a create, including the cross-field ones, plus the baby
+ * reference. `scheduleKey` is kept as written and not checked against the
+ * catalog: a file made under an older catalog edition must still import.
+ */
+export const familyDataHealthRecordSchema = healthRecordDataSchema
+  .extend({
+    babyId: fileRefSchema,
+    createdAt: optionalInstant,
+    updatedAt: optionalInstant,
+  })
+  .superRefine((record, ctx) => {
+    for (const { path, message } of healthRecordRuleIssues(record)) {
+      ctx.addIssue({ code: 'custom', message, path: [path] });
+    }
+  });
+
 export const familyDataSchema = z
   .object({
     format: z.literal(FAMILY_DATA_FORMAT),
@@ -102,6 +121,12 @@ export const familyDataSchema = z
     measurements: z
       .array(familyDataMeasurementSchema)
       .max(FAMILY_DATA_LIMITS.measurements)
+      .default([]),
+    // Absent in every file from before health records: stays valid, version 1.
+    // The export's `immunizationReference` is documentation and is not read back.
+    healthRecords: z
+      .array(familyDataHealthRecordSchema)
+      .max(FAMILY_DATA_LIMITS.healthRecords)
       .default([]),
   })
   .superRefine((data, ctx) => {
@@ -119,7 +144,7 @@ export const familyDataSchema = z
 
     // Reported once per collection rather than once per row: a file with a
     // wrong id usually has it on thousands of rows, and one line says enough.
-    for (const collection of ['events', 'measurements'] as const) {
+    for (const collection of ['events', 'measurements', 'healthRecords'] as const) {
       const index = data[collection].findIndex((row) => !ids.has(row.babyId));
       if (index !== -1) {
         ctx.addIssue({

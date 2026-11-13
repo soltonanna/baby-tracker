@@ -104,6 +104,29 @@ export const MEDICAL_SPECIALTIES = [
 ] as const;
 export type MedicalSpecialty = (typeof MEDICAL_SPECIALTIES)[number];
 
+/**
+ * What kind of medical event a health record is. A parent's categories, not a
+ * clinical taxonomy: the one distinction the app acts on is `vaccination`, the
+ * only category that can be matched against the immunization schedule.
+ */
+export const HEALTH_CATEGORIES = [
+  'vaccination',
+  'checkup',
+  'lab_test',
+  'procedure',
+  'medication',
+  'other',
+] as const;
+export type HealthCategory = (typeof HEALTH_CATEGORIES)[number];
+
+/**
+ * Dose units a record may carry. Free text would make "5 ml" and "5ml." two
+ * different things; a record stores exactly what was written on the product or
+ * prescription and the app never converts between them.
+ */
+export const HEALTH_DOSE_UNITS = ['ml', 'mg', 'mcg', 'iu', 'drops', 'tablets'] as const;
+export type HealthDoseUnit = (typeof HEALTH_DOSE_UNITS)[number];
+
 /** Display units. Storage is always canonical (decision D3). */
 export const WEIGHT_UNITS = ['kg', 'lb'] as const;
 export type WeightUnit = (typeof WEIGHT_UNITS)[number];

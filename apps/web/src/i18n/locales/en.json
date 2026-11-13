@@ -420,7 +420,8 @@
     "counts": {
       "babies": "Babies: {{count}}",
       "events": "Events: {{count}}",
-      "measurements": "Measurements: {{count}}"
+      "measurements": "Measurements: {{count}}",
+      "healthRecords": "Health records: {{count}}"
     },
     "export": {
       "title": "Export",
@@ -444,7 +445,7 @@
     },
     "clear": {
       "title": "Clear children's data",
-      "description": "Deletes all babies, daily events and growth measurements. Your sign-in and family stay.",
+      "description": "Deletes all babies, daily events, growth measurements and health records. Your sign-in and family stay.",
       "start": "Clear all children's data…",
       "confirm": "Delete all children's data permanently? This cannot be undone — export first if you want to keep it.",
       "action": "Delete everything",
@@ -506,10 +507,168 @@
     },
     "delete": {
       "title": "Delete {{name}}?",
-      "body": "This permanently deletes {{name}} and every feeding, sleep, diaper, note and growth measurement recorded for them. It cannot be undone. Export your data first if you want a backup.",
+      "body": "This permanently deletes {{name}} and every feeding, sleep, diaper, note, growth measurement and health record recorded for them. It cannot be undone. Export your data first if you want a backup.",
       "confirm": "Delete {{name}}",
       "deleting": "Deleting…",
       "failed": "Could not delete. Please try again."
+    }
+  },
+  "health": {
+    "title": "Health",
+    "tabs": {
+      "label": "Health sections",
+      "growth": "Growth",
+      "records": "Records",
+      "vaccinations": "Vaccinations"
+    },
+    "loading": "Loading…",
+    "loadFailed": "Could not load your family. Please try again.",
+    "noBabies": "Add your family and babies first, on",
+    "categories": {
+      "vaccination": "Vaccination",
+      "checkup": "Checkup",
+      "lab_test": "Lab test",
+      "procedure": "Procedure",
+      "medication": "Medication",
+      "other": "Other"
+    },
+    "units": {
+      "ml": "ml",
+      "mg": "mg",
+      "mcg": "mcg",
+      "iu": "IU",
+      "drops": "drops",
+      "tablets": "tablets"
+    },
+    "records": {
+      "title": "Medical history",
+      "add": "Add record",
+      "loading": "Loading records…",
+      "loadFailed": "Could not load records. Please try again.",
+      "empty": "No health records for {{name}} yet. Add a vaccination, checkup, test, procedure or medication.",
+      "emptyFiltered": "No records match these filters.",
+      "nextDue": "Next / follow-up: {{date}}",
+      "dose": "Dose: {{value}} {{unit}}",
+      "product": "Product: {{value}}",
+      "manufacturer": "Manufacturer: {{value}}",
+      "provider": "Doctor / clinic: {{value}}",
+      "purpose": "Purpose: {{value}}",
+      "linked": "Vaccination schedule: {{dose}}",
+      "attachmentsNote": "Attachments (photos and documents) are not supported yet."
+    },
+    "filters": {
+      "title": "Filter",
+      "category": "Category",
+      "all": "All",
+      "from": "From",
+      "to": "To",
+      "clear": "Clear filters"
+    },
+    "form": {
+      "title": "New health record for {{name}}",
+      "editTitle": "Edit health record for {{name}}",
+      "category": "Category",
+      "date": "Date",
+      "time": "Time",
+      "name": "Name of the procedure or vaccination",
+      "purpose": "Purpose — why it is needed",
+      "description": "Description",
+      "doseValue": "Dose / volume",
+      "doseUnit": "Unit",
+      "doseUnitNone": "—",
+      "doseHint": "Enter only what is written on the product label or given by your doctor.",
+      "productName": "Vaccine or medication name",
+      "manufacturer": "Manufacturer",
+      "provider": "Doctor / clinic",
+      "note": "Notes",
+      "nextDueOn": "Next recommended or follow-up date",
+      "scheduleDose": "Dose in the Armenian schedule",
+      "scheduleNone": "Not linked to the schedule",
+      "scheduleRetired": "Linked dose no longer in the schedule: {{key}}",
+      "scheduleHint": "Linking marks that dose as given in the Vaccinations tab. The record itself is never changed when the schedule is updated.",
+      "save": "Save record",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "errors": {
+        "nameRequired": "Enter a name.",
+        "invalidDate": "Enter a valid date.",
+        "futureDate": "A record cannot be dated in the future.",
+        "beforeBirth": "A record cannot be dated before the baby was born.",
+        "doseInvalid": "Enter a dose greater than zero.",
+        "doseUnitRequired": "Choose a unit for the dose.",
+        "doseValueRequired": "Enter the dose value, or clear the unit.",
+        "nextBeforeDate": "The next date cannot be before the date of the record.",
+        "saveFailed": "Could not save the record. Please try again.",
+        "updateFailed": "Could not update the record. Please try again."
+      }
+    },
+    "list": {
+      "edit": "Edit {{name}}",
+      "delete": "Delete {{name}}",
+      "confirmDelete": "Delete this record?",
+      "confirm": "Delete",
+      "cancel": "Keep",
+      "deleting": "Deleting…",
+      "deleteFailed": "Could not delete the record. Please try again."
+    },
+    "age": {
+      "birth": "At birth",
+      "days": "{{n}} d",
+      "weeks": "{{n}} wk",
+      "months": "{{n}} mo",
+      "years": "{{n}} y"
+    },
+    "status": {
+      "completed": "Done",
+      "due": "Due now",
+      "upcoming": "Upcoming",
+      "overdue": "Overdue",
+      "missed": "Possibly missed",
+      "scheduled_later": "Scheduled from {{year}}"
+    },
+    "schedule": {
+      "title": "Armenian vaccination schedule",
+      "progress": "{{completed}} of {{total}} doses recorded",
+      "needBirthDate": "Add {{name}}’s birth date to see the vaccination schedule.",
+      "addBirthDate": "Add birth date",
+      "recordDose": "Record this dose",
+      "recordDoseAria": "Record {{name}}, dose {{dose}}",
+      "viewRecord": "Edit the record",
+      "recommended": "Recommended at {{age}} — {{date}}",
+      "givenOn": "Given on {{date}}",
+      "doseOf": "Dose {{n}} of {{total}}",
+      "details": "Details",
+      "protects": "Protects against",
+      "purpose": "What it is for",
+      "doses": "Doses and intervals",
+      "catchUp": "If a dose is late",
+      "administration": "As stated in the decree: {{volume}} ml, {{route}}, {{site}} ({{clause}}). Always follow the product information and your paediatrician.",
+      "routes": {
+        "intramuscular": "intramuscular",
+        "intradermal": "intradermal"
+      },
+      "sites": {
+        "right_thigh": "right thigh",
+        "left_thigh": "left thigh",
+        "left_upper_arm": "left upper arm"
+      },
+      "source": "Source: {{source}}, {{clause}}",
+      "origin": {
+        "official": "Official · Armenia",
+        "international": "International · WHO"
+      },
+      "statusNote": "“Overdue” and “possibly missed” are calculated from the dates and limits in the decree. They are not a medical judgement — ask your paediatrician what to do.",
+      "tooEarly": "Recorded more than 4 days before the minimum age. The decree does not count such a dose as valid; ask your paediatrician whether it needs repeating.",
+      "intervalShort": "Recorded less than the minimum interval after the previous dose. Ask your paediatrician whether it needs repeating.",
+      "unmatchedTitle": "Recorded doses not in the current schedule",
+      "unmatchedBody": "These vaccinations are linked to a dose that the current schedule does not list. They are kept exactly as recorded: {{names}}.",
+      "internationalTitle": "Additional international recommendations",
+      "internationalIntro": "Not part of the Armenian national calendar and never counted as overdue. Ask your paediatrician.",
+      "recommendedFrom": "From {{age}}",
+      "unverified": "Source not yet checked against its text in this app.",
+      "sourcesTitle": "Sources",
+      "catalogInfo": "Catalog version {{version}} · last reviewed {{date}}",
+      "checkupsTitle": "Routine checkups and screenings"
     }
   }
 }

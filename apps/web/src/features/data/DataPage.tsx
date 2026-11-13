@@ -75,6 +75,7 @@ function useCountsText(): (counts: FamilyDataCounts) => string {
       t('data.counts.babies', { count: counts.babies }),
       t('data.counts.events', { count: counts.events }),
       t('data.counts.measurements', { count: counts.measurements }),
+      t('data.counts.healthRecords', { count: counts.healthRecords }),
     ].join(' · ');
 }
 
@@ -109,6 +110,7 @@ function ExportSection({ familyId }: { familyId: string }) {
               babies: exportData.data.babies.length,
               events: exportData.data.events.length,
               measurements: exportData.data.measurements.length,
+              healthRecords: exportData.data.healthRecords.length,
             }),
           })}
         </p>
@@ -148,6 +150,7 @@ async function readImportFile(file: File): Promise<PendingImport | { error: stri
       babies: parsed.data.babies.length,
       events: parsed.data.events.length,
       measurements: parsed.data.measurements.length,
+      healthRecords: parsed.data.healthRecords.length,
     },
   };
 }

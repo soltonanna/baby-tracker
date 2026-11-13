@@ -10,6 +10,7 @@ import { requireBabyInFamily } from '../../middleware/babyAccess.js';
 import { requireFamilyRole } from '../../middleware/familyAccess.js';
 import { babyEventRouter } from '../events/routes.js';
 import { growthRouter } from '../growth/routes.js';
+import { healthRecordRouter } from '../health-records/routes.js';
 import * as controller from './controller.js';
 
 /**
@@ -49,3 +50,4 @@ babyRouter.delete('/:babyId/photo', controller.deletePhoto);
 // does not belong to the caller's family.
 babyRouter.use('/:babyId/events', requireBabyInFamily, babyEventRouter);
 babyRouter.use('/:babyId/growth', requireBabyInFamily, growthRouter);
+babyRouter.use('/:babyId/health', requireBabyInFamily, healthRecordRouter);

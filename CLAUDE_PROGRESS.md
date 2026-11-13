@@ -363,3 +363,40 @@ On top of the 2026-10-08 family-data work. Not committed.
 Untested here: the new integration tests in `events.int.test.ts` ("feeding
 kinds") and `familyData.int.test.ts` ("feeding kinds in the data file") are
 written but unrun — run `npm run test:integration`.
+
+---
+
+## Health records and the Armenian vaccination schedule (2026-11-13)
+
+Not committed.
+
+- **Records.** New `HealthRecord` collection (`apps/api/src/models/HealthRecord.ts`),
+  per baby, soft-deleted, endpoints at `/families/:f/babies/:b/health`
+  (`features/health-records/`). Categories: vaccination, checkup, lab test,
+  procedure, medication, other. Dose = value + unit exactly as typed; never
+  computed or suggested. Validation in `packages/shared/src/schemas/health.ts`
+  (one rule function shared by create, edit-as-it-would-be, and import).
+- **Catalog.** `packages/shared/src/immunization/catalog.ts`: 17 doses from
+  Government Decision N 58-N (15 Jan 2026), birth to 4–6 years, with clause
+  references, trilingual text, source list and `IMMUNIZATION_CATALOG_VERSION`.
+  Two WHO items are listed apart, never counted. Checkup/screening schedule:
+  deliberately a placeholder (no verified Armenian source). `schedule.ts`
+  compares records to the calendar (completed / due / upcoming / overdue /
+  possibly missed / scheduled from 2027).
+- **Catalog revisions never rewrite history.** A record keeps its own name,
+  date, dose and product; `scheduleKey` + `catalogVersion` are only a pointer
+  and are not validated against the current catalog. Keys are stable forever.
+- **Export/import.** `healthRecords` (default `[]`, so older files stay valid —
+  format version still 1) plus an `immunizationReference` block (catalog
+  version, sources, vaccines, schedule) written to every export and ignored on
+  import. Counts gained `healthRecords`.
+- **Web.** `/health` is now three tabs (`?tab=`): Growth (unchanged), Records
+  (form, history, category/date filters), Vaccinations (schedule, progress,
+  details, sources, record-this-dose). `features/health/`.
+- **Limitations.** No attachments (no file storage beyond the baby photo). No
+  routine checkup schedule. Adolescent/adult vaccines not catalogued. WHO items
+  not verified against their text. hy/ru text is unreviewed by a native speaker.
+- **Test data.** `npm run generate:test-data` now includes 25 health records
+  with a missed BCG (girl) and a missed rotavirus 2 / late hexavalent 3 (boy).
+- **Pre-existing failures** (also fail on a clean checkout): `auth.int` register,
+  `growth.int` "unknown birth date", `bodyLimits.test` (EPIPE).

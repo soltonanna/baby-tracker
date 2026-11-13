@@ -197,7 +197,7 @@ describe('deleting a child', () => {
     await user.click(await screen.findByRole('button', { name: 'Delete Levon' }));
     const dialog = screen.getByRole('alertdialog');
     expect(within(dialog).getByText('Delete Levon?')).toBeDefined();
-    expect(within(dialog).getByText(/every feeding, sleep, diaper, note and growth/)).toBeDefined();
+    expect(within(dialog).getByText(/note, growth measurement and health record/)).toBeDefined();
 
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('alertdialog')).toBeNull();

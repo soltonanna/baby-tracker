@@ -4,6 +4,11 @@ import {
   FAMILY_DATA_FORMAT,
   type BabyPhotoContentType,
   FAMILY_DATA_VERSION,
+  IMMUNIZATION_CATALOG_REVIEWED_ON,
+  IMMUNIZATION_CATALOG_VERSION,
+  IMMUNIZATION_SCHEDULE,
+  IMMUNIZATION_SOURCES,
+  IMMUNIZATION_VACCINES,
   type FamilyDataCounts,
   type FamilyDataExport,
   type FamilyDataInput,
@@ -11,6 +16,7 @@ import {
 import { Baby } from '../../models/Baby.js';
 import { BabyEvent } from '../../models/BabyEvent.js';
 import { GrowthMeasurement } from '../../models/GrowthMeasurement.js';
+import { HealthRecord } from '../../models/HealthRecord.js';
 import type { FamilyScope } from '../../middleware/familyAccess.js';
 import { unprocessable } from '../../lib/httpError.js';
 import { detectImageType } from '../../lib/imageType.js';
@@ -41,12 +47,13 @@ const toCalendarDate = (date: Date): string => date.toISOString().slice(0, 10);
  */
 export async function exportFamilyData(family: FamilyScope): Promise<FamilyDataExport> {
   const familyId = family.familyId;
-  const [babies, events, measurements] = await Promise.all([
+  const [babies, events, measurements, healthRecords] = await Promise.all([
     Baby.find({ familyId }).select('+photo').sort({ createdAt: 1 }).lean(),
     BabyEvent.find({ familyId }).sort({ startedAt: 1, createdAt: 1 }).lean(),
     GrowthMeasurement.find({ familyId, deletedAt: null })
       .sort({ measuredOn: 1, createdAt: 1 })
       .lean(),
+    HealthRecord.find({ familyId, deletedAt: null }).sort({ occurredAt: 1, createdAt: 1 }).lean(),
   ]);
 
   return {
@@ -108,6 +115,32 @@ export async function exportFamilyData(family: FamilyScope): Promise<FamilyDataE
       createdAt: m.createdAt.toISOString(),
       updatedAt: m.updatedAt.toISOString(),
     })),
+    healthRecords: healthRecords.map((r) => ({
+      babyId: r.babyId.toString(),
+      category: r.category,
+      occurredAt: r.occurredAt.toISOString(),
+      name: r.name,
+      ...(r.purpose ? { purpose: r.purpose } : {}),
+      ...(r.description ? { description: r.description } : {}),
+      ...(typeof r.doseValue === 'number' ? { doseValue: r.doseValue } : {}),
+      ...(r.doseUnit ? { doseUnit: r.doseUnit } : {}),
+      ...(r.productName ? { productName: r.productName } : {}),
+      ...(r.manufacturer ? { manufacturer: r.manufacturer } : {}),
+      ...(r.provider ? { provider: r.provider } : {}),
+      ...(r.note ? { note: r.note } : {}),
+      ...(r.nextDueOn ? { nextDueOn: toCalendarDate(r.nextDueOn) } : {}),
+      ...(r.scheduleKey ? { scheduleKey: r.scheduleKey } : {}),
+      ...(r.catalogVersion ? { catalogVersion: r.catalogVersion } : {}),
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+    })),
+    immunizationReference: {
+      catalogVersion: IMMUNIZATION_CATALOG_VERSION,
+      reviewedOn: IMMUNIZATION_CATALOG_REVIEWED_ON,
+      sources: IMMUNIZATION_SOURCES,
+      vaccines: IMMUNIZATION_VACCINES,
+      schedule: IMMUNIZATION_SCHEDULE,
+    },
   };
 }
 
@@ -120,11 +153,13 @@ async function deleteChildrenData(
   // interruption would leave babies with no events rather than events with no baby.
   const events = await BabyEvent.deleteMany({ familyId }, { session });
   const measurements = await GrowthMeasurement.deleteMany({ familyId }, { session });
+  const healthRecords = await HealthRecord.deleteMany({ familyId }, { session });
   const babies = await Baby.deleteMany({ familyId }, { session });
   return {
     babies: babies.deletedCount,
     events: events.deletedCount,
     measurements: measurements.deletedCount,
+    healthRecords: healthRecords.deletedCount,
   };
 }
 
@@ -270,6 +305,32 @@ export async function importFamilyData(
     };
   });
 
+  const healthRecordDocs = data.healthRecords.map((r) => {
+    const createdAt = r.createdAt ?? new Date(now);
+    return {
+      familyId,
+      babyId: babyIdOf(r.babyId),
+      category: r.category,
+      occurredAt: r.occurredAt,
+      name: r.name,
+      ...(r.purpose ? { purpose: r.purpose } : {}),
+      ...(r.description ? { description: r.description } : {}),
+      ...(r.doseValue === undefined ? {} : { doseValue: r.doseValue }),
+      ...(r.doseUnit ? { doseUnit: r.doseUnit } : {}),
+      ...(r.productName ? { productName: r.productName } : {}),
+      ...(r.manufacturer ? { manufacturer: r.manufacturer } : {}),
+      ...(r.provider ? { provider: r.provider } : {}),
+      ...(r.note ? { note: r.note } : {}),
+      ...(r.nextDueOn ? { nextDueOn: r.nextDueOn } : {}),
+      ...(r.scheduleKey ? { scheduleKey: r.scheduleKey } : {}),
+      ...(r.catalogVersion ? { catalogVersion: r.catalogVersion } : {}),
+      createdBy: userId,
+      deletedAt: null,
+      createdAt,
+      updatedAt: r.updatedAt ?? createdAt,
+    };
+  });
+
   return inTransaction(async (session) => {
     await deleteChildrenData(family.familyId, session);
     // `timestamps: false` so the file's dates are stored rather than replaced
@@ -278,10 +339,12 @@ export async function importFamilyData(
     if (babyDocs.length > 0) await Baby.insertMany(babyDocs, options);
     if (eventDocs.length > 0) await BabyEvent.insertMany(eventDocs, options);
     if (measurementDocs.length > 0) await GrowthMeasurement.insertMany(measurementDocs, options);
+    if (healthRecordDocs.length > 0) await HealthRecord.insertMany(healthRecordDocs, options);
     return {
       babies: babyDocs.length,
       events: eventDocs.length,
       measurements: measurementDocs.length,
+      healthRecords: healthRecordDocs.length,
     };
   });
 }

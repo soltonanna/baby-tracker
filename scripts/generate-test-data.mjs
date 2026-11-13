@@ -21,6 +21,9 @@
  *   - mixed feeding: mostly breast (with a side and usually an end time, never a
  *     volume), plus bottles of expressed milk or formula with a volume — more
  *     bottles for the boy than the girl, and fewer at night;
+ *   - health records: the Armenian vaccination schedule as given, with a missed BCG
+ *     (girl), a missed second rotavirus dose and a late hexavalent dose (boy), plus a
+ *     checkup, a blood test, a procedure and a medication;
  *   - sleeps that cross midnight, nappies of every kind, notes, and grouped
  *     "both babies" entries sharing a `groupId`.
  *
@@ -360,11 +363,107 @@ function generateGrowth(baby) {
   measurements.sort((a, b) => a.measuredOn.localeCompare(b.measuredOn));
 }
 
+/* --------------------------------------------------------------- health --- */
+
+/**
+ * Medical records: the Armenian schedule as it would be recorded for a child
+ * vaccinated on time, with a few deliberate gaps so the Vaccinations tab shows
+ * every status — the boy has no second rotavirus dose and a late 18-week
+ * hexavalent dose; the girl has no BCG. Plus a checkup, a blood test, a
+ * procedure and a medication, to fill the history.
+ *
+ * Product names are fictional and no dose is given except the two the decree
+ * itself states (hepatitis B 0.5 ml, BCG 0.05 ml). Dates are the child's
+ * chronological age from birth, as the schedule counts it. Nothing is written
+ * after the moment the script runs. This is test data, not medical advice.
+ */
+const healthRecords = [];
+
+/** Local-calendar date + hours → instant, on the Yerevan clock. */
+const atLocal = (localDate, hour, minute = 0) =>
+  localMidnight(localDate) + hour * MS_HOUR + minute * MS_MIN;
+
+function generateHealth(baby) {
+  const skipped =
+    {
+      boy: new Set(['rota-2']),
+      girl: new Set(['bcg-1']),
+    }[baby.id] ?? new Set();
+  const delayedDays = baby.id === 'boy' ? { 'hexa-3': 40 } : {};
+
+  const push = (record) => {
+    const createdAt = iso(Date.parse(record.occurredAt) + 2 * MS_HOUR);
+    if (Date.parse(createdAt) <= NOW) {
+      healthRecords.push({ babyId: baby.id, ...record, createdAt, updatedAt: createdAt });
+    }
+  };
+
+  for (const item of shared.IMMUNIZATION_SCHEDULE) {
+    if (skipped.has(item.key)) continue;
+    const dueOn = shared.addAge(BIRTH, item.dueAge);
+    const givenOn = shared.addLocalDays(dueOn, delayedDays[item.key] ?? (item.dose === 1 ? 0 : 2));
+    const occurredAt = iso(atLocal(givenOn, item.dueAge.days === 0 ? 9 : 11, 30));
+    if (Date.parse(occurredAt) > NOW) continue;
+    const vaccine = shared.IMMUNIZATION_VACCINES.find((v) => v.id === item.vaccineId);
+    const nextItem = shared.IMMUNIZATION_SCHEDULE.find(
+      (n) => n.vaccineId === item.vaccineId && n.dose === item.dose + 1,
+    );
+    push({
+      category: 'vaccination',
+      occurredAt,
+      name: `${vaccine.abbreviation.en}, dose ${item.dose}`,
+      purpose: vaccine.protectsAgainst.en,
+      ...(item.administration ? { doseValue: item.administration.volumeMl, doseUnit: 'ml' } : {}),
+      productName: 'Test product (fictional)',
+      manufacturer: 'Test Manufacturer',
+      provider: item.dueAge.days === 0 ? 'Test Maternity Hospital' : 'Test Polyclinic No. 5',
+      ...(nextItem ? { nextDueOn: shared.addAge(BIRTH, nextItem.dueAge) } : {}),
+      scheduleKey: item.key,
+      catalogVersion: shared.IMMUNIZATION_CATALOG_VERSION,
+    });
+  }
+
+  push({
+    category: 'checkup',
+    occurredAt: iso(atLocal(shared.addLocalDays(BIRTH, 30), 10)),
+    name: 'One-month paediatric checkup',
+    purpose: 'Routine check of weight, feeding and development',
+    provider: 'Test Polyclinic No. 5',
+    note: 'Test data.',
+    nextDueOn: shared.addLocalDays(BIRTH, 60),
+  });
+  push({
+    category: 'lab_test',
+    occurredAt: iso(atLocal(shared.addLocalDays(BIRTH, 45), 9)),
+    name: 'Complete blood count',
+    description: 'Taken at the polyclinic laboratory.',
+    provider: 'Test Laboratory',
+  });
+  if (baby.id === 'boy') {
+    push({
+      category: 'procedure',
+      occurredAt: iso(atLocal(shared.addLocalDays(BIRTH, 70), 12)),
+      name: 'Hip ultrasound',
+      purpose: 'Screening of the hip joints',
+      provider: 'Test Diagnostic Centre',
+    });
+  }
+  push({
+    category: 'medication',
+    occurredAt: iso(atLocal(shared.addLocalDays(BIRTH, 20), 20)),
+    name: 'Vitamin D drops',
+    purpose: 'As advised by the paediatrician',
+    productName: 'Test vitamin D (fictional)',
+    note: 'Dose as instructed by the doctor; not recorded here.',
+  });
+}
+
 /* ------------------------------------------------------------------ main --- */
 
 for (const baby of BABIES) {
   generateBaby(baby);
   generateGrowth(baby);
+  generateHealth(baby);
 }
 generateShared();
 events.sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.babyId.localeCompare(b.babyId));
@@ -386,6 +485,9 @@ const file = {
   })),
   events,
   measurements: measurements.sort((a, b) => a.measuredOn.localeCompare(b.measuredOn)),
+  healthRecords: healthRecords.sort(
+    (a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.babyId.localeCompare(b.babyId),
+  ),
 };
 
 // The same schema the API validates with: a file that would be refused is
@@ -408,3 +510,4 @@ console.log(
 console.log(`  days: ${dayCount} (${BIRTH} → ${UNTIL})`);
 console.log(`  events: ${events.length} ${JSON.stringify(byType)}, grouped pairs: ${groupCounter}`);
 console.log(`  measurements: ${measurements.length}`);
+console.log(`  health records: ${healthRecords.length}`);

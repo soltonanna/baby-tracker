@@ -33,4 +33,7 @@ export const queryKeys = {
   /** One baby's growth measurements — the whole series, never by day. */
   growth: (familyId: string, babyId: string) =>
     ['families', familyId, 'babies', babyId, 'growth'] as const,
+  /** One baby's health records — the whole history; filters are applied in the browser. */
+  healthRecords: (familyId: string, babyId: string) =>
+    ['families', familyId, 'babies', babyId, 'health'] as const,
 };
